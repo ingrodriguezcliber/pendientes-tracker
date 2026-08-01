@@ -175,7 +175,7 @@
   </div>
 
   <div class="panel">
-    <h2>Burndown <span class="tag">Ideal vs Real</span></h2>
+    <h2>Burndown <span class="tag">Abiertos vs Cerrados</span></h2>
     <div class="filters">
       <input type="text" id="fBuscar" placeholder="Buscar por TAG, sistema o descripción...">
       <select id="fEspecialidad"><option value="">Especialidad: todas</option></select>
@@ -489,13 +489,13 @@ function renderBurndown(){
   const f = getFiltered();
   if(f.length===0){ if(chart) chart.destroy(); return; }
   const validOpen = f.filter(i=>i.fecha_elevado).map(i=>new Date(i.fecha_elevado));
-  const validPlan = f.filter(i=>i.fecha_prog_cierre).map(i=>new Date(i.fecha_prog_cierre));
-  if(!validOpen.length || !validPlan.length){ if(chart) chart.destroy(); return; }
+  const validCierre = f.filter(i=>i.fecha_real_cierre).map(i=>new Date(i.fecha_real_cierre));
+  if(!validOpen.length){ if(chart) chart.destroy(); return; }
 
   const startDate = new Date(Math.min(...validOpen));
-  const planEnd = new Date(Math.max(...validPlan));
   const today = new Date();
-  const endDate = today > planEnd ? today : planEnd;
+  const lastCierre = validCierre.length ? new Date(Math.max(...validCierre)) : today;
+  const endDate = today > lastCierre ? today : lastCierre;
 
   const totalPendientes = f.length;
   const dates = [];
@@ -505,18 +505,15 @@ function renderBurndown(){
     d.setDate(d.getDate()+1);
   }
 
-  const idealSeries = dates.map(date=>{
-    const totalDays = (planEnd - startDate) / 86400000;
-    const elapsed = (date - startDate) / 86400000;
-    if(totalDays <= 0) return 0;
-    const remaining = totalPendientes * (1 - Math.min(elapsed/totalDays,1));
-    return Math.max(remaining, 0);
-  });
-
-  const realSeries = dates.map(date=>{
+  const abiertosSeries = dates.map(date=>{
     if(date > today) return null;
     const closedByDate = f.filter(i=>i.fecha_real_cierre && new Date(i.fecha_real_cierre) <= date).length;
     return Math.max(totalPendientes - closedByDate, 0);
+  });
+
+  const cerradosSeries = dates.map(date=>{
+    if(date > today) return null;
+    return f.filter(i=>i.fecha_real_cierre && new Date(i.fecha_real_cierre) <= date).length;
   });
 
   const labels = dates.map(dt=>dt.toISOString().slice(0,10));
@@ -528,8 +525,8 @@ function renderBurndown(){
     data:{
       labels,
       datasets:[
-        { label:'Ideal', data:idealSeries, borderColor:'#4FA9E0', borderDash:[6,4], pointRadius:0, borderWidth:2, tension:0 },
-        { label:'Real', data:realSeries, borderColor:'#E8A33D', backgroundColor:'rgba(232,163,61,0.08)', fill:true, pointRadius:0, borderWidth:2.5, tension:0.15, spanGaps:false }
+        { label:'Abiertos totales', data:abiertosSeries, borderColor:'#E8A33D', backgroundColor:'rgba(232,163,61,0.08)', fill:true, pointRadius:0, borderWidth:2.5, tension:0.15, spanGaps:false },
+        { label:'Cerrados totales', data:cerradosSeries, borderColor:'#4CAF7D', backgroundColor:'rgba(76,175,125,0.08)', fill:true, pointRadius:0, borderWidth:2.5, tension:0.15, spanGaps:false }
       ]
     },
     options:{
@@ -541,7 +538,7 @@ function renderBurndown(){
       },
       scales:{
         x:{ticks:{color:'#7C8B93', maxTicksLimit:8, font:{family:'JetBrains Mono', size:10}}, grid:{color:'rgba(255,255,255,0.04)'}},
-        y:{ticks:{color:'#7C8B93', font:{family:'JetBrains Mono', size:10}}, grid:{color:'rgba(255,255,255,0.04)'}, title:{display:true,text:'Pendientes abiertos',color:'#7C8B93'}}
+        y:{ticks:{color:'#7C8B93', font:{family:'JetBrains Mono', size:10}}, grid:{color:'rgba(255,255,255,0.04)'}, title:{display:true,text:'Pendientes',color:'#7C8B93'}}
       }
     }
   });
