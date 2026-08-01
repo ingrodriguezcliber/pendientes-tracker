@@ -59,18 +59,29 @@
   .btn.primary:hover{filter:brightness(1.08); color:#1a1305;}
   input[type=file]{display:none;}
 
-  .kpis{
-    display:grid; grid-template-columns:repeat(7,1fr); gap:1px;
+  .kpis-wrap{
+    display:grid; grid-template-columns:2fr 1.1fr; gap:1px;
     background:var(--line); border:1px solid var(--line); margin-bottom:24px;
   }
-  .kpi{background:var(--panel); padding:14px 16px;}
-  .kpi .label{font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.07em;}
-  .kpi .value{font-family:'Space Grotesk',sans-serif; font-size:26px; font-weight:700; margin-top:6px;}
-  .kpi.crit .value{color:var(--red);}
-  .kpi.avance .value{color:var(--green);}
+  .kpis-grid{display:grid; grid-template-columns:repeat(3,1fr); grid-template-rows:repeat(2,1fr); gap:1px; background:var(--line);}
+  .kpi-cell{
+    background:var(--panel); padding:22px 16px; text-align:center;
+    display:flex; flex-direction:column; justify-content:center; gap:8px;
+  }
+  .kpi-cell .value{font-family:'Space Grotesk',sans-serif; font-size:38px; font-weight:700; line-height:1;}
+  .kpi-cell .label{font-family:'JetBrains Mono',monospace; font-size:10.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.06em;}
+  .kpi-cell.crit .value{color:var(--red);}
   .kpi-clickable{cursor:pointer; transition:.15s ease;}
   .kpi-clickable:hover{background:var(--panel-2);}
   .kpi-clickable.kpi-active{background:rgba(232,163,61,0.12); box-shadow:inset 0 0 0 1px var(--amber);}
+  .donut-panel{
+    background:var(--panel); padding:18px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px;
+  }
+  .donut-panel .donut-title{font-family:'JetBrains Mono',monospace; font-size:10.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; align-self:flex-start;}
+  .donut-canvas-box{position:relative; width:150px; height:150px;}
+  .donut-legend{display:flex; flex-direction:column; gap:8px; font-family:'Inter',sans-serif; font-size:12.5px;}
+  .donut-legend .dot{display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:6px;}
+  .donut-legend .pct{font-family:'JetBrains Mono',monospace; font-weight:700; margin-left:6px;}
 
   .panel{
     background:var(--panel); border:1px solid var(--line); border-radius:4px;
@@ -146,7 +157,8 @@
   footer{text-align:center; color:var(--muted); font-size:11.5px; font-family:'JetBrains Mono',monospace; margin-top:20px;}
 
   @media (max-width:900px){
-    .kpis{grid-template-columns:repeat(3,1fr);}
+    .kpis-wrap{grid-template-columns:1fr;}
+    .kpis-grid{grid-template-columns:repeat(2,1fr);}
     .kanban{grid-template-columns:1fr;}
   }
 </style>
@@ -167,14 +179,23 @@
     </div>
   </header>
 
-  <div class="kpis">
-    <div class="kpi"><div class="label">Total</div><div class="value" id="kpiTotal">–</div></div>
-    <div class="kpi kpi-clickable" id="kpiCardAbiertos"><div class="label">Abiertos</div><div class="value" id="kpiAbiertos">–</div></div>
-    <div class="kpi kpi-clickable" id="kpiCardCerrados"><div class="label">Cerrados</div><div class="value" id="kpiCerrados">–</div></div>
-    <div class="kpi crit kpi-clickable" id="kpiCardA"><div class="label">Pendientes A Abiertos</div><div class="value" id="kpiCritA">–</div></div>
-    <div class="kpi kpi-clickable" id="kpiCardB"><div class="label">Pendientes B Abiertos</div><div class="value" id="kpiCritB">–</div></div>
-    <div class="kpi kpi-clickable" id="kpiCardC"><div class="label">Pendientes C Abiertos</div><div class="value" id="kpiCritC">–</div></div>
-    <div class="kpi avance"><div class="label">% Avance</div><div class="value" id="kpiAvance">–</div></div>
+  <div class="kpis-wrap">
+    <div class="kpis-grid">
+      <div class="kpi-cell"><div class="value" id="kpiTotal">–</div><div class="label">Total</div></div>
+      <div class="kpi-cell kpi-clickable" id="kpiCardAbiertos"><div class="value" id="kpiAbiertos">–</div><div class="label">Abiertos</div></div>
+      <div class="kpi-cell kpi-clickable" id="kpiCardCerrados"><div class="value" id="kpiCerrados">–</div><div class="label">Cerrados</div></div>
+      <div class="kpi-cell crit kpi-clickable" id="kpiCardA"><div class="value" id="kpiCritA">–</div><div class="label">Pendientes A Abiertos</div></div>
+      <div class="kpi-cell kpi-clickable" id="kpiCardB"><div class="value" id="kpiCritB">–</div><div class="label">Pendientes B Abiertos</div></div>
+      <div class="kpi-cell kpi-clickable" id="kpiCardC"><div class="value" id="kpiCritC">–</div><div class="label">Pendientes C Abiertos</div></div>
+    </div>
+    <div class="donut-panel">
+      <div class="donut-title">% Avance</div>
+      <div class="donut-canvas-box"><canvas id="avanceDonut"></canvas></div>
+      <div class="donut-legend">
+        <span><span class="dot" style="background:var(--amber)"></span>Abiertos<span class="pct" id="donutPctAbiertos">–</span></span>
+        <span><span class="dot" style="background:var(--green)"></span>Cerrados<span class="pct" id="donutPctCerrados">–</span></span>
+      </div>
+    </div>
   </div>
 
   <div class="panel">
@@ -432,14 +453,36 @@ function renderKpis(){
   const critA = f.filter(i=>i.categoria==='A' && i.estado!=='CERRADO').length;
   const critB = f.filter(i=>i.categoria==='B' && i.estado!=='CERRADO').length;
   const critC = f.filter(i=>i.categoria==='C' && i.estado!=='CERRADO').length;
-  const avance = total ? Math.round((cerrados/total)*100) : 0;
   document.getElementById('kpiTotal').textContent = total;
   document.getElementById('kpiAbiertos').textContent = abiertos;
   document.getElementById('kpiCerrados').textContent = cerrados;
   document.getElementById('kpiCritA').textContent = critA;
   document.getElementById('kpiCritB').textContent = critB;
   document.getElementById('kpiCritC').textContent = critC;
-  document.getElementById('kpiAvance').textContent = avance + '%';
+  renderDonut(abiertos, cerrados, total);
+}
+
+let donutChart = null;
+function renderDonut(abiertos, cerrados, total){
+  const pctAbiertos = total ? Math.round((abiertos/total)*100) : 0;
+  const pctCerrados = total ? Math.round((cerrados/total)*100) : 0;
+  document.getElementById('donutPctAbiertos').textContent = pctAbiertos + '%';
+  document.getElementById('donutPctCerrados').textContent = pctCerrados + '%';
+
+  const ctx = document.getElementById('avanceDonut');
+  if(donutChart) donutChart.destroy();
+  if(typeof Chart === 'undefined') return;
+  donutChart = new Chart(ctx, {
+    type:'doughnut',
+    data:{
+      labels:['Abiertos','Cerrados'],
+      datasets:[{ data:[abiertos, cerrados], backgroundColor:['#E8A33D','#4CAF7D'], borderColor:'#161E23', borderWidth:3 }]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false, cutout:'62%',
+      plugins:{ legend:{display:false}, tooltip:{backgroundColor:'#1C262C', borderColor:'#2A363D', borderWidth:1} }
+    }
+  });
 }
 
 function renderKanban(){
