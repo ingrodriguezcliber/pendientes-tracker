@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Punch List Tracker · PECOM PRECOMISIONADO</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+<style>
+  :root{
+    --bg: #0F1518;
+    --panel: #161E23;
+    --panel-2: #1C262C;
+    --line: #2A363D;
+    --text: #E7ECEE;
+    --muted: #7C8B93;
+    --amber: #E8A33D;
+    --blue: #4FA9E0;
+    --green: #4CAF7D;
+    --red: #D8574A;
+    --grid: rgba(255,255,255,0.05);
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:
+      linear-gradient(var(--grid) 1px, transparent 1px) 0 0 / 100% 32px,
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px) 0 0 / 32px 100%,
+      var(--bg);
+    color:var(--text);
+    font-family:'Inter', sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1240px; margin:0 auto; padding:28px 20px 60px;}
+
+  header.top{
+    display:flex; justify-content:space-between; align-items:flex-end;
+    border-bottom:1px solid var(--line); padding-bottom:18px; margin-bottom:26px;
+    flex-wrap:wrap; gap:16px;
+  }
+  .brand-eyebrow{
+    font-family:'JetBrains Mono', monospace; font-size:11px; letter-spacing:.14em;
+    color:var(--amber); text-transform:uppercase; margin-bottom:6px;
+  }
+  h1{
+    font-family:'Space Grotesk', sans-serif; font-weight:700; font-size:26px;
+    margin:0; letter-spacing:-0.01em;
+  }
+  .top-actions{display:flex; gap:8px; flex-wrap:wrap; align-items:center;}
+  .btn{
+    font-family:'Inter', sans-serif; font-size:13px; font-weight:600;
+    background:var(--panel-2); color:var(--text); border:1px solid var(--line);
+    padding:9px 14px; border-radius:3px; cursor:pointer; transition:.15s ease;
+  }
+  .btn:hover{border-color:var(--amber); color:var(--amber);}
+  .btn.primary{background:var(--amber); color:#1a1305; border-color:var(--amber);}
+  .btn.primary:hover{filter:brightness(1.08); color:#1a1305;}
+  input[type=file]{display:none;}
+
+  .kpis{
+    display:grid; grid-template-columns:repeat(6,1fr); gap:1px;
+    background:var(--line); border:1px solid var(--line); margin-bottom:24px;
+  }
+  .kpi{background:var(--panel); padding:14px 16px;}
+  .kpi .label{font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.07em;}
+  .kpi .value{font-family:'Space Grotesk',sans-serif; font-size:26px; font-weight:700; margin-top:6px;}
+  .kpi.crit .value{color:var(--red);}
+  .kpi.avance .value{color:var(--green);}
+
+  .panel{
+    background:var(--panel); border:1px solid var(--line); border-radius:4px;
+    padding:20px; margin-bottom:22px;
+  }
+  .panel h2{
+    font-family:'Space Grotesk',sans-serif; font-size:15px; margin:0 0 16px;
+    display:flex; align-items:center; gap:8px; color:var(--text);
+  }
+  .panel h2 .tag{
+    font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--muted);
+    border:1px solid var(--line); padding:2px 6px; border-radius:2px;
+  }
+  .chart-box{height:320px;}
+
+  .filters{display:flex; gap:10px; flex-wrap:wrap; margin-bottom:18px;}
+  .filters select, .filters input{
+    background:var(--panel-2); color:var(--text); border:1px solid var(--line);
+    padding:7px 10px; border-radius:3px; font-family:'Inter',sans-serif; font-size:13px;
+  }
+  .filters input{min-width:220px;}
+
+  .kanban{display:grid; grid-template-columns:repeat(2,1fr); gap:14px;}
+  .kcol{background:var(--panel-2); border:1px solid var(--line); border-radius:4px; padding:12px; min-height:120px;}
+  .kcol .khead{
+    font-family:'JetBrains Mono',monospace; font-size:11px; text-transform:uppercase;
+    letter-spacing:.06em; color:var(--muted); margin-bottom:10px; display:flex; justify-content:space-between;
+  }
+  .kcol.abierto .khead{color:var(--red);}
+  .kcol.cerrado .khead{color:var(--green);}
+  .card{
+    background:var(--bg); border:1px solid var(--line); border-left:3px solid var(--muted);
+    border-radius:3px; padding:9px 10px; margin-bottom:8px; font-size:12.5px;
+  }
+  .kcol.abierto .card{border-left-color:var(--red);}
+  .kcol.cerrado .card{border-left-color:var(--green);}
+  .card .ss{font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--blue); font-weight:700;}
+  .card .desc{margin-top:3px; color:var(--text); line-height:1.35;}
+  .card .meta{margin-top:5px; font-size:10.5px; color:var(--muted); display:flex; justify-content:space-between; gap:8px;}
+  .crit-badge{font-family:'JetBrains Mono',monospace; font-weight:700; padding:1px 5px; border-radius:2px; font-size:10px;}
+  .crit-A{background:rgba(216,87,74,.18); color:var(--red);}
+  .crit-B{background:rgba(232,163,61,.18); color:var(--amber);}
+  .crit-C{background:rgba(79,169,224,.18); color:var(--blue);}
+
+  table{width:100%; border-collapse:collapse; font-size:12.5px;}
+  th{
+    text-align:left; font-family:'JetBrains Mono',monospace; font-size:10px; text-transform:uppercase;
+    letter-spacing:.05em; color:var(--muted); padding:8px 10px; border-bottom:1px solid var(--line);
+    position:sticky; top:0; background:var(--panel);
+  }
+  td{padding:8px 10px; border-bottom:1px solid var(--line); vertical-align:top;}
+  tr:hover td{background:var(--panel-2);}
+  .table-wrap{max-height:520px; overflow:auto; border:1px solid var(--line); border-radius:4px;}
+  .estado-badge{font-family:'JetBrains Mono',monospace; font-size:10px; font-weight:700; padding:2px 6px; border-radius:2px;}
+  .estado-ABIERTO{background:rgba(216,87,74,.18); color:var(--red);}
+  .estado-CERRADO{background:rgba(76,175,125,.18); color:var(--green);}
+
+  dialog{
+    background:var(--panel); color:var(--text); border:1px solid var(--line); border-radius:6px;
+    padding:22px; width:min(480px,90vw); max-height:85vh; overflow:auto;
+  }
+  dialog::backdrop{background:rgba(0,0,0,.55);}
+  dialog h3{font-family:'Space Grotesk',sans-serif; margin-top:0;}
+  .field{margin-bottom:12px; display:flex; flex-direction:column; gap:5px;}
+  .field label{font-size:11.5px; color:var(--muted); font-family:'JetBrains Mono',monospace;}
+  .field input, .field select, .field textarea{
+    background:var(--panel-2); border:1px solid var(--line); color:var(--text);
+    padding:8px; border-radius:3px; font-family:'Inter',sans-serif; font-size:13px;
+  }
+  .dialog-actions{display:flex; justify-content:flex-end; gap:8px; margin-top:16px;}
+
+  footer{text-align:center; color:var(--muted); font-size:11.5px; font-family:'JetBrains Mono',monospace; margin-top:20px;}
+
+  @media (max-width:900px){
+    .kpis{grid-template-columns:repeat(3,1fr);}
+    .kanban{grid-template-columns:1fr;}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <div>
+      <div class="brand-eyebrow">PECOM · PRECOMISIONADO — Listado de Pendientes</div>
+      <h1>Seguimiento de Pendientes</h1>
+    </div>
+    <div class="top-actions">
+      <button class="btn" id="btnUpload">Cargar CSV</button>
+      <input type="file" id="fileInput" accept=".csv">
+      <button class="btn" id="btnExport">Exportar CSV</button>
+      <button class="btn primary" id="btnAdd">+ Agregar pendiente</button>
+    </div>
+  </header>
+
+  <div class="kpis">
+    <div class="kpi"><div class="label">Total</div><div class="value" id="kpiTotal">–</div></div>
+    <div class="kpi"><div class="label">Abiertos</div><div class="value" id="kpiAbiertos">–</div></div>
+    <div class="kpi"><div class="label">Cerrados</div><div class="value" id="kpiCerrados">–</div></div>
+    <div class="kpi crit"><div class="label">Categoría A abiertas</div><div class="value" id="kpiCritA">–</div></div>
+    <div class="kpi"><div class="label">Categoría B abiertas</div><div class="value" id="kpiCritB">–</div></div>
+    <div class="kpi avance"><div class="label">% Avance</div><div class="value" id="kpiAvance">–</div></div>
+  </div>
+
+  <div class="panel">
+    <h2>Burndown <span class="tag">Ideal vs Real</span></h2>
+    <div class="filters">
+      <input type="text" id="fBuscar" placeholder="Buscar por TAG, sistema o descripción...">
+      <select id="fEspecialidad"><option value="">Especialidad: todas</option></select>
+      <select id="fCategoria"><option value="">Categoría: todas</option></select>
+      <select id="fResponsable"><option value="">Responsable: todos</option></select>
+    </div>
+    <div class="chart-box"><canvas id="burndownChart"></canvas></div>
+  </div>
+
+  <div class="panel">
+    <h2>Tablero <span class="tag">por estado</span></h2>
+    <div class="kanban">
+      <div class="kcol abierto"><div class="khead"><span>Abierto</span><span id="cntAbierto">0</span></div><div id="colAbierto"></div></div>
+      <div class="kcol cerrado"><div class="khead"><span>Cerrado</span><span id="cntCerrado">0</span></div><div id="colCerrado"></div></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Detalle <span class="tag" id="cntDetalle">0 registros</span></h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th><th>TAG</th><th>Sistema-Subsistema</th><th>Descripción</th><th>Especialidad</th>
+            <th>Cat.</th><th>Responsable</th><th>F.Elevado</th><th>F.Prog.Cierre</th><th>F.Real Cierre</th><th>Estado</th>
+          </tr>
+        </thead>
+        <tbody id="tblBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <footer>datos guardados localmente en el navegador · base inicial: data/pendientes_real.csv</footer>
+</div>
+
+<dialog id="dlgAdd">
+  <h3>Nuevo pendiente</h3>
+  <div class="field"><label>TAG</label><input id="inTag" placeholder='ej: 6"-PW-814030'></div>
+  <div class="field"><label>SISTEMA-SUBSISTEMA-DESCRIPCIÓN</label><input id="inSistema" placeholder="ej: AI72-18-01 / SUMIDERO: FLOWLINE"></div>
+  <div class="field"><label>DESCRIPCIÓN DEL PENDIENTE</label><textarea id="inDesc" rows="2"></textarea></div>
+  <div class="field"><label>UBICACIÓN</label><input id="inUbicacion"></div>
+  <div class="field"><label>ESPECIALIDAD</label>
+    <select id="inEspecialidad"><option>Piping (P)</option><option>Mecánica (M)</option><option>Instrumentación (I)</option><option>Electricidad (E)</option><option>Civil</option></select>
+  </div>
+  <div class="field"><label>CATEGORÍA</label>
+    <select id="inCategoria"><option>A</option><option>B</option><option>C</option></select>
+  </div>
+  <div class="field"><label>RESPONSABLE DE LA ACCIÓN</label><input id="inResp"></div>
+  <div class="field"><label>ESTADO</label>
+    <select id="inEstado"><option>ABIERTO</option><option>CERRADO</option></select>
+  </div>
+  <div class="field"><label>FECHA DE ELEVADO</label><input type="date" id="inFElevado"></div>
+  <div class="field"><label>FECHA PROGRAMADA DE CIERRE</label><input type="date" id="inFProg"></div>
+  <div class="field"><label>OBSERVACIONES</label><textarea id="inObs" rows="2"></textarea></div>
+  <div class="dialog-actions">
+    <button class="btn" id="btnCancelAdd">Cancelar</button>
+    <button class="btn primary" id="btnSaveAdd">Guardar</button>
+  </div>
+</dialog>
+
+<script>
+const STORAGE_KEY = 'punchlist_items_v2';
+let items = [];
+let chart = null;
+
+// mapeo flexible de encabezados: distintas variantes de nombre -> clave interna
+const HEADER_MAP = {
+  id: ['id'],
+  tag: ['tag'],
+  sistema: ['sistema','sistema-subsistema-descripcion','sistema-subsistema-descripción'],
+  descripcion: ['descripcion','descripcion del pendiente','descripción del pendiente'],
+  ubicacion: ['ubicacion','ubicación'],
+  especialidad: ['especialidad'],
+  categoria: ['categoria','categoría'],
+  responsable: ['responsable','reponsable de la accion','responsable de la accion','responsable de la acción'],
+  fecha_elevado: ['fecha_elevado','fecha de elevado'],
+  fecha_prog_cierre: ['fecha_prog_cierre','fecha programada de cierre'],
+  fecha_real_cierre: ['fecha_real_cierre','fecha real de cierre'],
+  estado: ['estado'],
+  observaciones: ['observaciones'],
+  referente_cierre: ['referente_cierre','referente del cierre']
+};
+
+function normKey(s){
+  return (s||'').toString().trim().toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'') // saca acentos
+    .replace(/\s+/g,' ');
+}
+
+function mapRow(raw){
+  const out = {};
+  const rawKeysNorm = {};
+  Object.keys(raw).forEach(k=>{ rawKeysNorm[normKey(k)] = raw[k]; });
+  Object.keys(HEADER_MAP).forEach(target=>{
+    let val = '';
+    for(const alias of HEADER_MAP[target]){
+      if(rawKeysNorm[normKey(alias)] !== undefined){ val = rawKeysNorm[normKey(alias)]; break; }
+    }
+    out[target] = val === undefined || val === null ? '' : String(val).trim();
+  });
+  if(!out.id) out.id = crypto.randomUUID();
+  if(!out.categoria) out.categoria = 'C';
+  if(!out.estado) out.estado = 'ABIERTO';
+  out.estado = out.estado.toUpperCase();
+  out.categoria = out.categoria.toUpperCase();
+  return out;
+}
+
+async function loadInitialData(){
+  const stored = localStorage.getItem(STORAGE_KEY);
+  if(stored){ items = JSON.parse(stored); render(); return; }
+  try{
+    const res = await fetch('pendientes_real.csv?v=' + Date.now(), {cache:'no-store'});
+    const text = await res.text();
+    const parsed = Papa.parse(text, {header:true, skipEmptyLines:true, delimiter:","});
+    items = parsed.data.map(mapRow);
+    saveItems();
+    render();
+  }catch(e){
+    items = [];
+    render();
+  }
+}
+
+function saveItems(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(items)); }
+
+function getFiltered(){
+  const esp = document.getElementById('fEspecialidad').value;
+  const cat = document.getElementById('fCategoria').value;
+  const resp = document.getElementById('fResponsable').value;
+  const q = normKey(document.getElementById('fBuscar').value);
+  return items.filter(i =>
+    (!esp || i.especialidad === esp) &&
+    (!cat || i.categoria === cat) &&
+    (!resp || i.responsable === resp) &&
+    (!q || normKey(i.tag).includes(q) || normKey(i.sistema).includes(q) || normKey(i.descripcion).includes(q))
+  );
+}
+
+function populateFilters(){
+  const esp = [...new Set(items.map(i=>i.especialidad))].filter(Boolean).sort();
+  const cat = [...new Set(items.map(i=>i.categoria))].filter(Boolean).sort();
+  const resp = [...new Set(items.map(i=>i.responsable))].filter(Boolean).sort();
+  fillSelect('fEspecialidad', esp, 'Especialidad: todas');
+  fillSelect('fCategoria', cat, 'Categoría: todas');
+  fillSelect('fResponsable', resp, 'Responsable: todos');
+}
+function fillSelect(id, values, placeholder){
+  const el = document.getElementById(id);
+  const current = el.value;
+  el.innerHTML = `<option value="">${placeholder}</option>` + values.map(v=>`<option value="${v}">${v}</option>`).join('');
+  if(values.includes(current)) el.value = current;
+}
+
+function render(){
+  populateFilters();
+  renderKpis();
+  renderKanban();
+  renderBurndown();
+  renderTable();
+}
+
+function renderKpis(){
+  const f = getFiltered();
+  const total = f.length;
+  const cerrados = f.filter(i=>i.estado==='CERRADO').length;
+  const abiertos = total - cerrados;
+  const critA = f.filter(i=>i.categoria==='A' && i.estado!=='CERRADO').length;
+  const critB = f.filter(i=>i.categoria==='B' && i.estado!=='CERRADO').length;
+  const avance = total ? Math.round((cerrados/total)*100) : 0;
+  document.getElementById('kpiTotal').textContent = total;
+  document.getElementById('kpiAbiertos').textContent = abiertos;
+  document.getElementById('kpiCerrados').textContent = cerrados;
+  document.getElementById('kpiCritA').textContent = critA;
+  document.getElementById('kpiCritB').textContent = critB;
+  document.getElementById('kpiAvance').textContent = avance + '%';
+}
+
+function renderKanban(){
+  const f = getFiltered();
+  const cols = {ABIERTO:'colAbierto', CERRADO:'colCerrado'};
+  const cnts = {ABIERTO:'cntAbierto', CERRADO:'cntCerrado'};
+  Object.values(cols).forEach(id=>document.getElementById(id).innerHTML='');
+  Object.keys(cols).forEach(estado=>{
+    const subset = f.filter(i=>i.estado===estado);
+    document.getElementById(cnts[estado]).textContent = subset.length;
+    const container = document.getElementById(cols[estado]);
+    subset.slice(0,150).forEach(i=>{
+      const div = document.createElement('div');
+      div.className = 'card';
+      div.innerHTML = `
+        <div class="ss">${i.tag || 's/d'} <span class="crit-badge crit-${i.categoria}">${i.categoria}</span></div>
+        <div class="desc">${i.descripcion || '(sin descripcion)'}</div>
+        <div class="meta"><span>${i.especialidad||''}</span><span>${i.responsable||''}</span></div>
+      `;
+      container.appendChild(div);
+    });
+  });
+}
+
+function renderTable(){
+  const f = getFiltered();
+  document.getElementById('cntDetalle').textContent = f.length + ' registros';
+  const tbody = document.getElementById('tblBody');
+  tbody.innerHTML = f.map(i => `
+    <tr>
+      <td>${i.id}</td>
+      <td>${i.tag||''}</td>
+      <td>${i.sistema||''}</td>
+      <td>${i.descripcion||''}</td>
+      <td>${i.especialidad||''}</td>
+      <td><span class="crit-badge crit-${i.categoria}">${i.categoria}</span></td>
+      <td>${i.responsable||''}</td>
+      <td>${i.fecha_elevado||''}</td>
+      <td>${i.fecha_prog_cierre||''}</td>
+      <td>${i.fecha_real_cierre||''}</td>
+      <td><span class="estado-badge estado-${i.estado}">${i.estado}</span></td>
+    </tr>
+  `).join('');
+}
+
+function renderBurndown(){
+  const f = getFiltered();
+  if(f.length===0){ if(chart) chart.destroy(); return; }
+  const validOpen = f.filter(i=>i.fecha_elevado).map(i=>new Date(i.fecha_elevado));
+  const validPlan = f.filter(i=>i.fecha_prog_cierre).map(i=>new Date(i.fecha_prog_cierre));
+  if(!validOpen.length || !validPlan.length){ if(chart) chart.destroy(); return; }
+
+  const startDate = new Date(Math.min(...validOpen));
+  const planEnd = new Date(Math.max(...validPlan));
+  const today = new Date();
+  const endDate = today > planEnd ? today : planEnd;
+
+  const totalPendientes = f.length;
+  const dates = [];
+  const d = new Date(startDate);
+  while(d <= endDate){
+    dates.push(new Date(d));
+    d.setDate(d.getDate()+1);
+  }
+
+  const idealSeries = dates.map(date=>{
+    const totalDays = (planEnd - startDate) / 86400000;
+    const elapsed = (date - startDate) / 86400000;
+    if(totalDays <= 0) return 0;
+    const remaining = totalPendientes * (1 - Math.min(elapsed/totalDays,1));
+    return Math.max(remaining, 0);
+  });
+
+  const realSeries = dates.map(date=>{
+    if(date > today) return null;
+    const closedByDate = f.filter(i=>i.fecha_real_cierre && new Date(i.fecha_real_cierre) <= date).length;
+    return Math.max(totalPendientes - closedByDate, 0);
+  });
+
+  const labels = dates.map(dt=>dt.toISOString().slice(0,10));
+
+  const ctx = document.getElementById('burndownChart');
+  if(chart) chart.destroy();
+  chart = new Chart(ctx, {
+    type:'line',
+    data:{
+      labels,
+      datasets:[
+        { label:'Ideal', data:idealSeries, borderColor:'#4FA9E0', borderDash:[6,4], pointRadius:0, borderWidth:2, tension:0 },
+        { label:'Real', data:realSeries, borderColor:'#E8A33D', backgroundColor:'rgba(232,163,61,0.08)', fill:true, pointRadius:0, borderWidth:2.5, tension:0.15, spanGaps:false }
+      ]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      interaction:{mode:'index', intersect:false},
+      plugins:{
+        legend:{labels:{color:'#E7ECEE', font:{family:'Inter'}}},
+        tooltip:{backgroundColor:'#1C262C', borderColor:'#2A363D', borderWidth:1}
+      },
+      scales:{
+        x:{ticks:{color:'#7C8B93', maxTicksLimit:8, font:{family:'JetBrains Mono', size:10}}, grid:{color:'rgba(255,255,255,0.04)'}},
+        y:{ticks:{color:'#7C8B93', font:{family:'JetBrains Mono', size:10}}, grid:{color:'rgba(255,255,255,0.04)'}, title:{display:true,text:'Pendientes abiertos',color:'#7C8B93'}}
+      }
+    }
+  });
+}
+
+// --- interactions ---
+['fEspecialidad','fCategoria','fResponsable'].forEach(id=>document.getElementById(id).addEventListener('change', render));
+document.getElementById('fBuscar').addEventListener('input', render);
+
+document.getElementById('btnUpload').addEventListener('click', ()=>document.getElementById('fileInput').click());
+document.getElementById('fileInput').addEventListener('change', (e)=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  Papa.parse(file, {header:true, skipEmptyLines:true, delimiter:",", complete:(res)=>{
+    items = res.data.map(mapRow);
+    saveItems();
+    render();
+  }});
+});
+
+document.getElementById('btnExport').addEventListener('click', ()=>{
+  const csv = Papa.unparse(items);
+  const blob = new Blob([csv], {type:'text/csv'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'pendientes_export.csv';
+  a.click();
+});
+
+const dlg = document.getElementById('dlgAdd');
+document.getElementById('btnAdd').addEventListener('click', ()=>dlg.showModal());
+document.getElementById('btnCancelAdd').addEventListener('click', ()=>dlg.close());
+document.getElementById('btnSaveAdd').addEventListener('click', ()=>{
+  const newItem = mapRow({
+    id: crypto.randomUUID(),
+    tag: document.getElementById('inTag').value,
+    sistema: document.getElementById('inSistema').value,
+    descripcion: document.getElementById('inDesc').value,
+    ubicacion: document.getElementById('inUbicacion').value,
+    especialidad: document.getElementById('inEspecialidad').value,
+    categoria: document.getElementById('inCategoria').value,
+    responsable: document.getElementById('inResp').value,
+    estado: document.getElementById('inEstado').value,
+    fecha_elevado: document.getElementById('inFElevado').value,
+    fecha_prog_cierre: document.getElementById('inFProg').value,
+    fecha_real_cierre: document.getElementById('inEstado').value === 'CERRADO' ? new Date().toISOString().slice(0,10) : '',
+    observaciones: document.getElementById('inObs').value
+  });
+  items.push(newItem);
+  saveItems();
+  render();
+  dlg.close();
+});
+
+loadInitialData();
+</script>
+</body>
+</html>
