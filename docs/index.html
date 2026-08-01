@@ -421,14 +421,16 @@ function populateFilters(){
   const cat = [...new Set(items.map(i=>i.categoria))].filter(Boolean).sort();
   const resp = [...new Set(items.map(i=>i.responsable))].filter(Boolean).sort();
   const fase = [...new Set(items.map(i=>i.fase))].filter(Boolean).sort();
-  const hito = [...new Set(items.map(i=>i.hito))].filter(Boolean).sort();
+  const faseSeleccionada = document.getElementById('fFase').value;
+  const itemsParaHito = faseSeleccionada ? items.filter(i=>i.fase === faseSeleccionada) : items;
+  const hito = [...new Set(itemsParaHito.map(i=>i.hito))].filter(Boolean).sort();
   const AREAS = ['Construcción','Ingeniería (OT)','Calidad','Precom','Seguridad','Cliente'];
   fillSelect('fAreaCierre', AREAS, 'Área de cierre: todas');
   fillSelect('fEspecialidad', esp, 'Especialidad: todas');
   fillSelect('fCategoria', cat, 'Categoría: todas');
   fillSelect('fResponsable', resp, 'Responsable: todos');
   fillSelect('fFase', fase, 'Fase: todas');
-  fillSelect('fHito', hito, 'Hito: todos');
+  fillSelect('fHito', hito, faseSeleccionada ? `Hito (en ${faseSeleccionada}): todos` : 'Hito: todos');
 }
 function fillSelect(id, values, placeholder){
   const el = document.getElementById(id);
