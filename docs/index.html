@@ -104,6 +104,27 @@
   }
   .filters input{min-width:220px;}
 
+  .multiselect{position:relative;}
+  .multiselect-btn{min-width:150px; text-align:left; display:flex; justify-content:space-between; align-items:center; gap:8px;}
+  .multiselect-btn::after{content:'▾'; font-size:10px; color:var(--muted);}
+  .multiselect-btn.ms-has-selection{border-color:var(--amber); color:var(--amber);}
+  .multiselect-panel{
+    position:absolute; top:calc(100% + 6px); left:0; z-index:20; width:340px; max-width:80vw;
+    background:var(--panel); border:1px solid var(--line); border-radius:4px;
+    box-shadow:0 8px 24px rgba(0,0,0,.4); padding:8px;
+  }
+  .multiselect-actions{display:flex; justify-content:flex-end; padding:4px 6px 8px; border-bottom:1px solid var(--line); margin-bottom:6px;}
+  .ms-link{background:none; border:none; color:var(--blue); font-family:'Inter',sans-serif; font-size:12px; cursor:pointer; padding:2px 4px;}
+  .ms-link:hover{text-decoration:underline;}
+  .multiselect-options{max-height:280px; overflow-y:auto; display:flex; flex-direction:column; gap:2px;}
+  .ms-option{
+    display:flex; align-items:flex-start; gap:8px; padding:6px 6px; border-radius:3px; cursor:pointer;
+    font-family:'Inter',sans-serif; font-size:12.5px; color:var(--text); line-height:1.35;
+  }
+  .ms-option:hover{background:var(--panel-2);}
+  .ms-option input{margin-top:2px; flex-shrink:0;}
+  .ms-empty{color:var(--muted); font-size:12px; padding:10px 6px; font-style:italic;}
+
   .kanban{display:grid; grid-template-columns:repeat(2,1fr); gap:14px;}
   .kcol{background:var(--panel-2); border:1px solid var(--line); border-radius:4px; padding:12px; min-height:120px;}
   .kcol .khead{
@@ -204,7 +225,15 @@
       <input type="text" id="fBuscar" placeholder="Buscar por TAG, sistema o descripción...">
       <select id="fEspecialidad"><option value="">Especialidad: todas</option></select>
       <select id="fFase"><option value="">Fase: todas</option></select>
-      <select id="fHito"><option value="">Hito: todos</option></select>
+      <div class="multiselect" id="msHito">
+        <button type="button" class="btn multiselect-btn" id="msHitoBtn">Hito: todos</button>
+        <div class="multiselect-panel" id="msHitoPanel" hidden>
+          <div class="multiselect-actions">
+            <button type="button" class="ms-link" id="msHitoClear">Limpiar selección</button>
+          </div>
+          <div class="multiselect-options" id="msHitoOptions"></div>
+        </div>
+      </div>
       <select id="fCategoria"><option value="">Categoría: todas</option></select>
       <select id="fResponsable"><option value="">Área que emite: todas</option></select>
       <select id="fAreaCierre"><option value="">Área de cierre: todas</option></select>
@@ -330,6 +359,7 @@ const STORAGE_KEY = 'punchlist_items_v2';
 let items = [];
 let chart = null;
 let kpiFiltro = null; // { estado: 'ABIERTO'|'CERRADO', categoria: 'A'|'B'|'C'|null }
+let hitosSeleccionados = new Set(); // vacío = todos
 
 // Catálogo completo de Fase/Hito según el cronograma (MS Project), incluye hitos sin pendientes emitidos todavía
 const FASES_HITOS_CRONOGRAMA = [{"fase": "Fase 1", "hito": "HITO 1 · DRENAJE  STZZ-1301B"}, {"fase": "Fase 1", "hito": "HITO 1 · DRENAJE STZZ-1301A"}, {"fase": "Fase 1", "hito": "HITO 1 · Ducto"}, {"fase": "Fase 1", "hito": "HITO 1 · FIBRA OPTICA: DESDE PAD C1A"}, {"fase": "Fase 1", "hito": "HITO 1 · Montaje de Trampas TSL 16\""}, {"fase": "Fase 1", "hito": "HITO 1 · Montaje de Trampas TSR 16\""}, {"fase": "Fase 1", "hito": "HITO 1 · SISTEMA ELECTRICO / PUESTA A TIERRA: ZONA TRAMPA RECEPTORA STZZ-1301B 16\""}, {"fase": "Fase 1", "hito": "HITO 2 · FlowLine Gas Lift 3\" (900 m) C1A-PI-CE1"}, {"fase": "Fase 1", "hito": "HITO 2 · FlowLine Producción 8\" (900 m) C1A-PI-CE1"}, {"fase": "Fase 1", "hito": "HITO 2 · Línea de Control 6\" (1.771 m) C1A a PC-CE1"}, {"fase": "Fase 1", "hito": "HITO 2 · Línea de Control 6\" (100 m) PC-CE1 a Tie In-T16\""}, {"fase": "Fase 1", "hito": "HITO 2 · Línea de Control 6\" (50 m) C1B a Tie In LC C1A"}, {"fase": "Fase 1", "hito": "HITO 3 · FlowLine Gas Lift 3\" (700 m) C1B-PI-CE1"}, {"fase": "Fase 1", "hito": "HITO 3 · FlowLine Producción 8\" (700 m) C1B-PI-CE1"}, {"fase": "Fase 1", "hito": "HITO 4 · FlowLine Gas Lift 3\" (1.400 m) PI-CE4 a C7B"}, {"fase": "Fase 1", "hito": "HITO 4 · FlowLine Producción 10\" (1.400 m) PI-CE4 a C7B"}, {"fase": "Fase 1", "hito": "HITO 4 · Línea de Control 6\" (100 m) PC-CE2 a Tie In T16\""}, {"fase": "Fase 1", "hito": "HITO 4 · Línea de Control 6\" (2.000 m) PC-CE2 a C7A"}, {"fase": "Fase 1", "hito": "HITO 4 · Línea de Control 6\" (250 m) C7B a Tie In LC C7A"}, {"fase": "Fase 1", "hito": "HITO 5 · FlowLine Gas Lift 3\" (700 m) PI-CE2 a C4A"}, {"fase": "Fase 1", "hito": "HITO 5 · FlowLine Producción 10\" (700 m) PI-CE2 a C4A"}, {"fase": "Fase 1", "hito": "HITO 5 · Línea de Control 6\" (1.600 m) PC-CE1 a C4A"}, {"fase": "Pedido de Obra 2", "hito": "Z - Flex · SUMIDERO / FLOWLINE FLEXI-PIPE"}, {"fase": "Pedido de Obra 3", "hito": "PO#3 · Cruce de Ruta Provincial 5 12\""}, {"fase": "Pedido de Obra 5", "hito": "Z - Flex · FLOWLINE FLEXI-PIPE A POZO 1021"}, {"fase": "Pedido de Obra 6", "hito": "PO#6 · FLOWLINE FLEXI-PIPE A POZO 1071"}];
@@ -404,7 +434,6 @@ function getFiltered(){
   const resp = document.getElementById('fResponsable').value;
   const areaCierre = document.getElementById('fAreaCierre').value;
   const fase = document.getElementById('fFase').value;
-  const hito = document.getElementById('fHito').value;
   const q = normKey(document.getElementById('fBuscar').value);
   return items.filter(i =>
     (!esp || i.especialidad === esp) &&
@@ -412,7 +441,7 @@ function getFiltered(){
     (!resp || i.responsable === resp) &&
     (!areaCierre || (i.area_cierre||'').split(',').map(s=>s.trim()).includes(areaCierre)) &&
     (!fase || i.fase === fase) &&
-    (!hito || i.hito === hito) &&
+    (hitosSeleccionados.size === 0 || hitosSeleccionados.has(i.hito)) &&
     (!kpiFiltro || i.estado === kpiFiltro.estado) &&
     (!kpiFiltro || !kpiFiltro.categoria || i.categoria === kpiFiltro.categoria) &&
     (!q || normKey(i.tag).includes(q) || normKey(i.sistema).includes(q) || normKey(i.descripcion).includes(q))
@@ -443,7 +472,7 @@ function populateFilters(){
   fillSelect('fCategoria', cat, 'Categoría: todas');
   fillSelect('fResponsable', resp, 'Responsable: todos');
   fillSelect('fFase', fase, 'Fase: todas');
-  fillSelect('fHito', hito, faseSeleccionada ? `Hito (en ${faseSeleccionada}): todos` : 'Hito: todos');
+  renderHitoMultiselect(hito);
 }
 function fillSelect(id, values, placeholder){
   const el = document.getElementById(id);
@@ -451,6 +480,61 @@ function fillSelect(id, values, placeholder){
   el.innerHTML = `<option value="">${placeholder}</option>` + values.map(v=>`<option value="${v}">${v}</option>`).join('');
   if(values.includes(current)) el.value = current;
 }
+
+function renderHitoMultiselect(opcionesDisponibles){
+  // sacamos del set cualquier hito que ya no esté disponible (ej. cambió la fase seleccionada)
+  hitosSeleccionados.forEach(h=>{ if(!opcionesDisponibles.includes(h)) hitosSeleccionados.delete(h); });
+
+  const cont = document.getElementById('msHitoOptions');
+  if(opcionesDisponibles.length === 0){
+    cont.innerHTML = `<div class="ms-empty">No hay hitos para mostrar</div>`;
+  } else {
+    cont.innerHTML = opcionesDisponibles.map((h,idx)=>`
+      <label class="ms-option">
+        <input type="checkbox" data-hito-idx="${idx}" ${hitosSeleccionados.has(h) ? 'checked' : ''}>
+        <span>${h}</span>
+      </label>
+    `).join('');
+    cont.querySelectorAll('input[type=checkbox]').forEach((chk,idx)=>{
+      chk.addEventListener('change', ()=>{
+        const val = opcionesDisponibles[idx];
+        if(chk.checked) hitosSeleccionados.add(val); else hitosSeleccionados.delete(val);
+        actualizarBotonHito();
+        render();
+      });
+    });
+  }
+  actualizarBotonHito();
+}
+
+function actualizarBotonHito(){
+  const btn = document.getElementById('msHitoBtn');
+  const n = hitosSeleccionados.size;
+  if(n === 0){
+    btn.textContent = 'Hito: todos';
+    btn.classList.remove('ms-has-selection');
+  } else if(n === 1){
+    const unico = [...hitosSeleccionados][0];
+    btn.textContent = 'Hito: ' + (unico.length > 28 ? unico.slice(0,28)+'…' : unico);
+    btn.classList.add('ms-has-selection');
+  } else {
+    btn.textContent = `Hito: ${n} seleccionados`;
+    btn.classList.add('ms-has-selection');
+  }
+}
+
+document.getElementById('msHitoBtn').addEventListener('click', (e)=>{
+  e.stopPropagation();
+  document.getElementById('msHitoPanel').hidden = !document.getElementById('msHitoPanel').hidden;
+});
+document.getElementById('msHitoClear').addEventListener('click', ()=>{
+  hitosSeleccionados.clear();
+  render();
+});
+document.addEventListener('click', (e)=>{
+  const ms = document.getElementById('msHito');
+  if(!ms.contains(e.target)) document.getElementById('msHitoPanel').hidden = true;
+});
 
 function render(){
   populateFilters();
@@ -609,7 +693,7 @@ function renderBurndown(){
 }
 
 // --- interactions ---
-['fEspecialidad','fCategoria','fResponsable','fAreaCierre','fFase','fHito'].forEach(id=>document.getElementById(id).addEventListener('change', render));
+['fEspecialidad','fCategoria','fResponsable','fAreaCierre','fFase'].forEach(id=>document.getElementById(id).addEventListener('change', render));
 document.getElementById('fBuscar').addEventListener('input', render);
 
 document.getElementById('btnUpload').addEventListener('click', ()=>document.getElementById('fileInput').click());
