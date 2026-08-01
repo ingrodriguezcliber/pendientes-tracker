@@ -106,6 +106,7 @@
   .kcol.cerrado .card{border-left-color:var(--green);}
   .card .ss{font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--blue); font-weight:700;}
   .card .desc{margin-top:3px; color:var(--text); line-height:1.35;}
+  .card .breadcrumb{font-family:'JetBrains Mono',monospace; font-size:9.5px; color:var(--amber); text-transform:uppercase; letter-spacing:.04em; margin-bottom:3px;}
   .card .meta{margin-top:5px; font-size:10.5px; color:var(--muted); display:flex; justify-content:space-between; gap:8px;}
   .crit-badge{font-family:'JetBrains Mono',monospace; font-weight:700; padding:1px 5px; border-radius:2px; font-size:10px;}
   .crit-A{background:rgba(216,87,74,.18); color:var(--red);}
@@ -178,6 +179,8 @@
     <div class="filters">
       <input type="text" id="fBuscar" placeholder="Buscar por TAG, sistema o descripción...">
       <select id="fEspecialidad"><option value="">Especialidad: todas</option></select>
+      <select id="fFase"><option value="">Fase: todas</option></select>
+      <select id="fHito"><option value="">Hito: todos</option></select>
       <select id="fCategoria"><option value="">Categoría: todas</option></select>
       <select id="fResponsable"><option value="">Responsable: todos</option></select>
     </div>
@@ -198,7 +201,7 @@
       <table>
         <thead>
           <tr>
-            <th>ID</th><th>TAG</th><th>Sistema-Subsistema</th><th>Descripción</th><th>Especialidad</th>
+            <th>ID</th><th>Fase</th><th>Hito</th><th>TAG</th><th>Sistema-Subsistema</th><th>Descripción</th><th>Especialidad</th>
             <th>Cat.</th><th>Responsable</th><th>F.Elevado</th><th>F.Prog.Cierre</th><th>F.Real Cierre</th><th>Estado</th>
           </tr>
         </thead>
@@ -242,6 +245,8 @@ let chart = null;
 
 // mapeo flexible de encabezados: distintas variantes de nombre -> clave interna
 const HEADER_MAP = {
+  fase: ['fase'],
+  hito: ['hito'],
   id: ['id'],
   tag: ['tag'],
   sistema: ['sistema','sistema-subsistema-descripcion','sistema-subsistema-descripción'],
@@ -305,11 +310,15 @@ function getFiltered(){
   const esp = document.getElementById('fEspecialidad').value;
   const cat = document.getElementById('fCategoria').value;
   const resp = document.getElementById('fResponsable').value;
+  const fase = document.getElementById('fFase').value;
+  const hito = document.getElementById('fHito').value;
   const q = normKey(document.getElementById('fBuscar').value);
   return items.filter(i =>
     (!esp || i.especialidad === esp) &&
     (!cat || i.categoria === cat) &&
     (!resp || i.responsable === resp) &&
+    (!fase || i.fase === fase) &&
+    (!hito || i.hito === hito) &&
     (!q || normKey(i.tag).includes(q) || normKey(i.sistema).includes(q) || normKey(i.descripcion).includes(q))
   );
 }
@@ -318,9 +327,13 @@ function populateFilters(){
   const esp = [...new Set(items.map(i=>i.especialidad))].filter(Boolean).sort();
   const cat = [...new Set(items.map(i=>i.categoria))].filter(Boolean).sort();
   const resp = [...new Set(items.map(i=>i.responsable))].filter(Boolean).sort();
+  const fase = [...new Set(items.map(i=>i.fase))].filter(Boolean).sort();
+  const hito = [...new Set(items.map(i=>i.hito))].filter(Boolean).sort();
   fillSelect('fEspecialidad', esp, 'Especialidad: todas');
   fillSelect('fCategoria', cat, 'Categoría: todas');
   fillSelect('fResponsable', resp, 'Responsable: todos');
+  fillSelect('fFase', fase, 'Fase: todas');
+  fillSelect('fHito', hito, 'Hito: todos');
 }
 function fillSelect(id, values, placeholder){
   const el = document.getElementById(id);
@@ -368,6 +381,7 @@ function renderKanban(){
       const div = document.createElement('div');
       div.className = 'card';
       div.innerHTML = `
+        ${(i.fase || i.hito) ? `<div class="breadcrumb">${[i.fase,i.hito].filter(Boolean).join(' › ')}</div>` : ''}
         <div class="ss">${i.tag || 's/d'} <span class="crit-badge crit-${i.categoria}">${i.categoria}</span></div>
         <div class="desc">${i.descripcion || '(sin descripcion)'}</div>
         <div class="meta"><span>${i.especialidad||''}</span><span>${i.responsable||''}</span></div>
@@ -384,6 +398,8 @@ function renderTable(){
   tbody.innerHTML = f.map(i => `
     <tr>
       <td>${i.id}</td>
+      <td>${i.fase||''}</td>
+      <td>${i.hito||''}</td>
       <td>${i.tag||''}</td>
       <td>${i.sistema||''}</td>
       <td>${i.descripcion||''}</td>
@@ -461,7 +477,7 @@ function renderBurndown(){
 }
 
 // --- interactions ---
-['fEspecialidad','fCategoria','fResponsable'].forEach(id=>document.getElementById(id).addEventListener('change', render));
+['fEspecialidad','fCategoria','fResponsable','fFase','fHito'].forEach(id=>document.getElementById(id).addEventListener('change', render));
 document.getElementById('fBuscar').addEventListener('input', render);
 
 document.getElementById('btnUpload').addEventListener('click', ()=>document.getElementById('fileInput').click());
