@@ -331,6 +331,9 @@ let items = [];
 let chart = null;
 let kpiFiltro = null; // { estado: 'ABIERTO'|'CERRADO', categoria: 'A'|'B'|'C'|null }
 
+// Catálogo completo de Fase/Hito según el cronograma (MS Project), incluye hitos sin pendientes emitidos todavía
+const FASES_HITOS_CRONOGRAMA = [{"fase": "Fase 1", "hito": "HITO 1 · DRENAJE  STZZ-1301A"}, {"fase": "Fase 1", "hito": "HITO 1 · DRENAJE STZZ-1301A"}, {"fase": "Fase 1", "hito": "HITO 1 · Ducto"}, {"fase": "Fase 1", "hito": "HITO 1 · FIBRA OPTICA: DESDE PAD C1A"}, {"fase": "Fase 1", "hito": "HITO 1 · Montaje de Trampas TSL 16\""}, {"fase": "Fase 1", "hito": "HITO 1 · Montaje de Trampas TSR 16\""}, {"fase": "Fase 1", "hito": "HITO 1 · SISTEMA ELECTRICO / PUESTA A TIERRA: ZONA TRAMPA RECEPTORA STZZ-1301B 16\""}, {"fase": "Fase 1", "hito": "HITO 2 · FlowLine Gas Lift 3\" (900 m) C1A-PI-CE1"}, {"fase": "Fase 1", "hito": "HITO 2 · FlowLine Producción 8\" (900 m) C1A-PI-CE1"}, {"fase": "Fase 1", "hito": "HITO 2 · Línea de Control 6\" (1.771 m) C1A a PC-CE1"}, {"fase": "Fase 1", "hito": "HITO 2 · Línea de Control 6\" (100 m) PC-CE1 a Tie In-T16\""}, {"fase": "Fase 1", "hito": "HITO 2 · Línea de Control 6\" (50 m) C1B a Tie In LC C1A"}, {"fase": "Fase 1", "hito": "HITO 3 · FlowLine Gas Lift 3\" (700 m) C1B-PI-CE1"}, {"fase": "Fase 1", "hito": "HITO 3 · FlowLine Producción 8\" (700 m) C1B-PI-CE1"}, {"fase": "Fase 1", "hito": "HITO 4 · FlowLine Gas Lift 3\" (1.400 m) PI-CE4 a C7B"}, {"fase": "Fase 1", "hito": "HITO 4 · FlowLine Producción 10\" (1.400 m) PI-CE4 a C7B"}, {"fase": "Fase 1", "hito": "HITO 4 · Línea de Control 6\" (100 m) PC-CE2 a Tie In T16\""}, {"fase": "Fase 1", "hito": "HITO 4 · Línea de Control 6\" (2.000 m) PC-CE2 a C7A"}, {"fase": "Fase 1", "hito": "HITO 4 · Línea de Control 6\" (250 m) C7B a Tie In LC C7A"}, {"fase": "Fase 1", "hito": "HITO 5 · FlowLine Gas Lift 3\" (700 m) PI-CE2 a C4A"}, {"fase": "Fase 1", "hito": "HITO 5 · FlowLine Producción 10\" (700 m) PI-CE2 a C4A"}, {"fase": "Fase 1", "hito": "HITO 5 · Línea de Control 6\" (1.600 m) PC-CE1 a C4A"}, {"fase": "Pedido de Obra 2", "hito": "Z - Flex · SUMIDERO / FLOWLINE FLEXI-PIPE"}, {"fase": "Pedido de Obra 3", "hito": "PO#3 · Cruce de Ruta Provincial 5 12\""}, {"fase": "Pedido de Obra 5", "hito": "Z - Flex · FLOWLINE FLEXI-PIPE A POZO 1021"}, {"fase": "Pedido de Obra 6", "hito": "PO#6 · FLOWLINE FLEXI-PIPE A POZO 1071"}];
+
 // mapeo flexible de encabezados: distintas variantes de nombre -> clave interna
 const HEADER_MAP = {
   area_cierre: ['area_cierre','area de cierre','areas de cierre','area(s) de cierre'],
@@ -420,10 +423,20 @@ function populateFilters(){
   const esp = [...new Set(items.map(i=>i.especialidad))].filter(Boolean).sort();
   const cat = [...new Set(items.map(i=>i.categoria))].filter(Boolean).sort();
   const resp = [...new Set(items.map(i=>i.responsable))].filter(Boolean).sort();
-  const fase = [...new Set(items.map(i=>i.fase))].filter(Boolean).sort();
+
+  // Fase: catálogo completo del cronograma + cualquier fase nueva que aparezca en los datos
+  const fasesDatos = items.map(i=>i.fase).filter(Boolean);
+  const fase = [...new Set([...FASES_HITOS_CRONOGRAMA.map(f=>f.fase), ...fasesDatos])].sort();
+
+  // Hito: catálogo completo del cronograma (filtrado por fase si hay una elegida) + hitos nuevos que aparezcan en los datos
   const faseSeleccionada = document.getElementById('fFase').value;
+  const catalogoFiltrado = faseSeleccionada
+    ? FASES_HITOS_CRONOGRAMA.filter(f=>f.fase === faseSeleccionada)
+    : FASES_HITOS_CRONOGRAMA;
   const itemsParaHito = faseSeleccionada ? items.filter(i=>i.fase === faseSeleccionada) : items;
-  const hito = [...new Set(itemsParaHito.map(i=>i.hito))].filter(Boolean).sort();
+  const hitosDatos = itemsParaHito.map(i=>i.hito).filter(Boolean);
+  const hito = [...new Set([...catalogoFiltrado.map(f=>f.hito), ...hitosDatos])].sort();
+
   const AREAS = ['Construcción','Ingeniería (OT)','Calidad','Precom','Seguridad','Cliente'];
   fillSelect('fAreaCierre', AREAS, 'Área de cierre: todas');
   fillSelect('fEspecialidad', esp, 'Especialidad: todas');
