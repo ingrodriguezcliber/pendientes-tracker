@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Punch List Tracker · PECOM PRECOMISIONADO</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+<style>
+  :root{
+    --bg: #0F1518;
+    --panel: #161E23;
+    --panel-2: #1C262C;
+    --line: #2A363D;
+    --text: #E7ECEE;
+    --muted: #7C8B93;
+    --amber: #E8A33D;
+    --blue: #4FA9E0;
+    --green: #4CAF7D;
+    --red: #D8574A;
+    --grid: rgba(255,255,255,0.05);
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:
+      linear-gradient(var(--grid) 1px, transparent 1px) 0 0 / 100% 32px,
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px) 0 0 / 32px 100%,
+      var(--bg);
+    color:var(--text);
+    font-family:'Inter', sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1800px; margin:0 auto; padding:28px 32px 60px;}
+
+  header.top{
+    display:flex; justify-content:space-between; align-items:flex-end;
+    border-bottom:1px solid var(--line); padding-bottom:18px; margin-bottom:26px;
+    flex-wrap:wrap; gap:16px;
+  }
+  .brand-eyebrow{
+    font-family:'JetBrains Mono', monospace; font-size:11px; letter-spacing:.14em;
+    color:var(--amber); text-transform:uppercase; margin-bottom:6px;
+  }
+  h1{
+    font-family:'Space Grotesk', sans-serif; font-weight:700; font-size:26px;
+    margin:0; letter-spacing:-0.01em;
+  }
+  .top-actions{display:flex; gap:8px; flex-wrap:wrap; align-items:center;}
+
+  .nav-select{
+    background:var(--panel-2); color:var(--text); border:1px solid var(--line);
+    padding:9px 14px; border-radius:3px; font-family:'Inter',sans-serif; font-size:13px; font-weight:600;
+    cursor:pointer; margin-right:4px;
+  }
+  .nav-select:hover{border-color:var(--amber);}
+  .btn{
+    font-family:'Inter', sans-serif; font-size:13px; font-weight:600;
+    background:var(--panel-2); color:var(--text); border:1px solid var(--line);
+    padding:9px 14px; border-radius:3px; cursor:pointer; transition:.15s ease;
+  }
+  .btn:hover{border-color:var(--amber); color:var(--amber);}
+  .btn.primary{background:var(--amber); color:#1a1305; border-color:var(--amber);}
+  .btn.primary:hover{filter:brightness(1.08); color:#1a1305;}
+  input[type=file]{display:none;}
+
+  .kpis-wrap{
+    display:grid; grid-template-columns:2fr 1.1fr; gap:1px;
+    background:var(--line); border:1px solid var(--line); margin-bottom:24px;
+  }
+  .kpis-grid{display:grid; grid-template-columns:repeat(3,1fr); grid-template-rows:repeat(2,1fr); gap:1px; background:var(--line);}
+  .kpi-cell{
+    background:var(--panel); padding:22px 16px; text-align:center;
+    display:flex; flex-direction:column; justify-content:center; gap:8px;
+  }
+  .kpi-cell .value{font-family:'Space Grotesk',sans-serif; font-size:38px; font-weight:700; line-height:1;}
+  .kpi-cell .label{font-family:'JetBrains Mono',monospace; font-size:10.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.06em;}
+  .kpi-cell.crit .value{color:var(--red);}
+  .kpi-clickable{cursor:pointer; transition:.15s ease;}
+  .kpi-clickable:hover{background:var(--panel-2);}
+  .kpi-clickable.kpi-active{background:rgba(232,163,61,0.12); box-shadow:inset 0 0 0 1px var(--amber);}
+  .donut-panel{
+    background:var(--panel); padding:18px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px;
+  }
+  .donut-panel .donut-title{font-family:'JetBrains Mono',monospace; font-size:10.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; align-self:flex-start;}
+  .donut-canvas-box{position:relative; width:150px; height:150px;}
+  .donut-legend{display:flex; flex-direction:column; gap:8px; font-family:'Inter',sans-serif; font-size:12.5px;}
+  .donut-legend .dot{display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:6px;}
+  .donut-legend .pct{font-family:'JetBrains Mono',monospace; font-weight:700; margin-left:6px;}
+
+  .panel{
+    background:var(--panel); border:1px solid var(--line); border-radius:4px;
+    padding:20px; margin-bottom:22px;
+  }
+  .panel h2{
+    font-family:'Space Grotesk',sans-serif; font-size:15px; margin:0 0 16px;
+    display:flex; align-items:center; gap:8px; color:var(--text);
+  }
+  .panel h2 .tag{
+    font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--muted);
+    border:1px solid var(--line); padding:2px 6px; border-radius:2px;
+  }
+  .chart-box{height:320px;}
+
+  .filters{display:flex; gap:10px; flex-wrap:wrap; margin-bottom:18px;}
+  .filters select, .filters input{
+    background:var(--panel-2); color:var(--text); border:1px solid var(--line);
+    padding:7px 10px; border-radius:3px; font-family:'Inter',sans-serif; font-size:13px;
+  }
+  .filters input{min-width:220px;}
+
+  .multiselect{position:relative;}
+  .multiselect-btn{min-width:150px; text-align:left; display:flex; justify-content:space-between; align-items:center; gap:8px;}
+  .multiselect-btn::after{content:'▾'; font-size:10px; color:var(--muted);}
+  .multiselect-btn.ms-has-selection{border-color:var(--amber); color:var(--amber);}
+  .multiselect-panel{
+    position:absolute; top:calc(100% + 6px); left:0; z-index:20; width:340px; max-width:80vw;
+    background:var(--panel); border:1px solid var(--line); border-radius:4px;
+    box-shadow:0 8px 24px rgba(0,0,0,.4); padding:8px;
+  }
+  .multiselect-actions{display:flex; justify-content:flex-end; padding:4px 6px 8px; border-bottom:1px solid var(--line); margin-bottom:6px;}
+  .ms-link{background:none; border:none; color:var(--blue); font-family:'Inter',sans-serif; font-size:12px; cursor:pointer; padding:2px 4px;}
+  .ms-link:hover{text-decoration:underline;}
+  .multiselect-options{max-height:280px; overflow-y:auto; display:flex; flex-direction:column; gap:2px;}
+  .ms-option{
+    display:flex; align-items:flex-start; gap:8px; padding:6px 6px; border-radius:3px; cursor:pointer;
+    font-family:'Inter',sans-serif; font-size:12.5px; color:var(--text); line-height:1.35;
+  }
+  .ms-option:hover{background:var(--panel-2);}
+  .ms-option input{margin-top:2px; flex-shrink:0;}
+  .ms-empty{color:var(--muted); font-size:12px; padding:10px 6px; font-style:italic;}
+
+  .kanban{display:grid; grid-template-columns:repeat(2,1fr); gap:14px;}
+  .kcol{background:var(--panel-2); border:1px solid var(--line); border-radius:4px; padding:12px; min-height:120px;}
+  .kcol .khead{
+    font-family:'JetBrains Mono',monospace; font-size:11px; text-transform:uppercase;
+    letter-spacing:.06em; color:var(--muted); margin-bottom:10px; display:flex; justify-content:space-between;
+  }
+  .kcol.abierto .khead{color:var(--red);}
+  .kcol.cerrado .khead{color:var(--green);}
+  .card{
+    background:var(--bg); border:1px solid var(--line); border-left:3px solid var(--muted);
+    border-radius:3px; padding:9px 10px; margin-bottom:8px; font-size:12.5px;
+  }
+  .kcol.abierto .card{border-left-color:var(--red);}
+  .kcol.cerrado .card{border-left-color:var(--green);}
+  .card .ss{font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--blue); font-weight:700;}
+  .card .desc{margin-top:3px; color:var(--text); line-height:1.35;}
+  .card .breadcrumb{font-family:'JetBrains Mono',monospace; font-size:9.5px; color:var(--amber); text-transform:uppercase; letter-spacing:.04em; margin-bottom:3px;}
+  .card .meta{margin-top:5px; font-size:10.5px; color:var(--muted); display:flex; justify-content:space-between; gap:8px;}
+  .crit-badge{font-family:'JetBrains Mono',monospace; font-weight:700; padding:1px 5px; border-radius:2px; font-size:10px;}
+  .crit-A{background:rgba(216,87,74,.18); color:var(--red);}
+  .crit-B{background:rgba(232,163,61,.18); color:var(--amber);}
+  .crit-C{background:rgba(79,169,224,.18); color:var(--blue);}
+
+  table{width:100%; border-collapse:collapse; font-size:12.5px;}
+  th{
+    text-align:left; font-family:'JetBrains Mono',monospace; font-size:10px; text-transform:uppercase;
+    letter-spacing:.05em; color:var(--muted); padding:8px 10px; border-bottom:1px solid var(--line);
+    position:sticky; top:0; background:var(--panel);
+  }
+  td{padding:8px 10px; border-bottom:1px solid var(--line); vertical-align:top;}
+  tr:hover td{background:var(--panel-2);}
+  .table-wrap{max-height:520px; overflow:auto; border:1px solid var(--line); border-radius:4px;}
+  .estado-badge{font-family:'JetBrains Mono',monospace; font-size:10px; font-weight:700; padding:2px 6px; border-radius:2px;}
+  .estado-ABIERTO{background:rgba(216,87,74,.18); color:var(--red);}
+  .estado-CERRADO{background:rgba(76,175,125,.18); color:var(--green);}
+
+  dialog{
+    background:var(--panel); color:var(--text); border:1px solid var(--line); border-radius:6px;
+    padding:22px; width:min(480px,90vw); max-height:85vh; overflow:auto;
+  }
+  dialog::backdrop{background:rgba(0,0,0,.55);}
+  dialog h3{font-family:'Space Grotesk',sans-serif; margin-top:0;}
+  .field{margin-bottom:12px; display:flex; flex-direction:column; gap:5px;}
+  .field label{font-size:11.5px; color:var(--muted); font-family:'JetBrains Mono',monospace;}
+  .field input, .field select, .field textarea{
+    background:var(--panel-2); border:1px solid var(--line); color:var(--text);
+    padding:8px; border-radius:3px; font-family:'Inter',sans-serif; font-size:13px;
+  }
+  .dialog-actions{display:flex; justify-content:flex-end; gap:8px; margin-top:16px;}
+
+  footer{text-align:center; color:var(--muted); font-size:11.5px; font-family:'JetBrains Mono',monospace; margin-top:20px;}
+
+  @media (max-width:900px){
+    .kpis-wrap{grid-template-columns:1fr;}
+    .kpis-grid{grid-template-columns:repeat(2,1fr);}
+    .kanban{grid-template-columns:1fr;}
+  }
+
+  /* --- Login overlay --- */
+  #loginOverlay{
+    position:fixed; inset:0; z-index:100; display:flex; align-items:center; justify-content:center;
+    background:var(--bg);
+  }
+  #loginOverlay .login-box{width:min(360px,90vw);}
+  #loginOverlay h2{font-family:'Space Grotesk',sans-serif; margin-top:0; font-size:18px;}
+  #loginOverlay .brand-eyebrow{margin-bottom:14px;}
+  #loginError{margin-top:4px;}
+</style>
+</head>
+<body>
+
+<div id="loginOverlay">
+  <div class="panel login-box">
+    <div class="brand-eyebrow">PECOM · PRECOMISIONADO</div>
+    <h2>Iniciar sesión</h2>
+    <div class="field"><label>Email</label><input type="email" id="loginEmail" autocomplete="username"></div>
+    <div class="field"><label>Contraseña</label><input type="password" id="loginPassword" autocomplete="current-password"></div>
+    <div id="loginError" style="color:var(--red); font-size:12.5px; display:none;"></div>
+    <div class="dialog-actions">
+      <button class="btn primary" id="btnLogin" style="width:100%;">Ingresar</button>
+    </div>
+  </div>
+</div>
+
+<div class="wrap" id="appContent" style="display:none;">
+
+  <header class="top">
+    <div>
+      <div class="brand-eyebrow">PECOM · PRECOMISIONADO — Seguimiento de Materiales</div>
+      <h1>Seguimiento de Materiales</h1>
+    </div>
+    <div class="top-actions">
+      <select class="nav-select" id="navSelect">
+        <option value="index.html">PRECOM · Seguimiento de Pendientes</option>
+        <option value="estatus-index.html">PRECOM · Estatus Index</option>
+        <option value="materiales.html" selected>Seguimiento de Materiales</option>
+      </select>
+      <button class="btn" id="btnLogout">Salir</button>
+    </div>
+  </header>
+
+  <div class="panel" style="text-align:center; padding:60px 20px;">
+    <h2 style="justify-content:center;">Página en construcción</h2>
+    <p style="color:var(--muted); font-family:'Inter',sans-serif; font-size:14px; max-width:520px; margin:0 auto;">
+      Todavía no definimos el contenido de "Seguimiento de Materiales". Contame qué información querés ver acá
+      (ej. materiales críticos, faltantes por proveedor, fechas de arribo) y lo armamos juntos.
+    </p>
+  </div>
+
+  <footer>PECOM · PRECOMISIONADO — módulo en desarrollo</footer>
+</div>
+
+<script>
+document.getElementById('navSelect').addEventListener('change', (e)=>{
+  window.location.href = e.target.value;
+});
+</script>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import {
+    getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut
+  } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+  import {
+    getFirestore, doc, getDoc
+  } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyDWWsX4F3ZiuoR9U_KVvTlDDV1J9rnPt0c",
+    authDomain: "pendientes---tracker---pecom.firebaseapp.com",
+    projectId: "pendientes---tracker---pecom",
+    storageBucket: "pendientes---tracker---pecom.firebasestorage.app",
+    messagingSenderId: "748730561638",
+    appId: "1:748730561638:web:3e2fd4f5a5be09c297e9a7"
+  };
+
+  const fbApp = initializeApp(firebaseConfig);
+  const auth = getAuth(fbApp);
+  const db = getFirestore(fbApp);
+
+  const loginOverlay = document.getElementById('loginOverlay');
+  const appContent = document.getElementById('appContent');
+  const loginError = document.getElementById('loginError');
+
+  onAuthStateChanged(auth, async (user) => {
+    if (user) {
+      loginOverlay.style.display = 'none';
+      appContent.style.display = 'block';
+    } else {
+      loginOverlay.style.display = 'flex';
+      appContent.style.display = 'none';
+    }
+  });
+
+  async function tryLogin(){
+    const email = document.getElementById('loginEmail').value.trim();
+    const password = document.getElementById('loginPassword').value;
+    loginError.style.display = 'none';
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+    } catch (err) {
+      loginError.textContent = 'No se pudo iniciar sesión. Verificá el email y la contraseña.';
+      loginError.style.display = 'block';
+    }
+  }
+
+  document.getElementById('btnLogin').addEventListener('click', tryLogin);
+  document.getElementById('loginPassword').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') tryLogin();
+  });
+  document.getElementById('loginEmail').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') tryLogin();
+  });
+
+  document.getElementById('btnLogout').addEventListener('click', () => signOut(auth));
+</script>
+
+</body>
+</html>
