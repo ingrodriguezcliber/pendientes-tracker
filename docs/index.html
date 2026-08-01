@@ -60,7 +60,7 @@
   input[type=file]{display:none;}
 
   .kpis{
-    display:grid; grid-template-columns:repeat(6,1fr); gap:1px;
+    display:grid; grid-template-columns:repeat(7,1fr); gap:1px;
     background:var(--line); border:1px solid var(--line); margin-bottom:24px;
   }
   .kpi{background:var(--panel); padding:14px 16px;}
@@ -169,6 +169,7 @@
     <div class="kpi"><div class="label">Cerrados</div><div class="value" id="kpiCerrados">–</div></div>
     <div class="kpi crit"><div class="label">Categoría A abiertas</div><div class="value" id="kpiCritA">–</div></div>
     <div class="kpi"><div class="label">Categoría B abiertas</div><div class="value" id="kpiCritB">–</div></div>
+    <div class="kpi"><div class="label">Categoría C abiertas</div><div class="value" id="kpiCritC">–</div></div>
     <div class="kpi avance"><div class="label">% Avance</div><div class="value" id="kpiAvance">–</div></div>
   </div>
 
@@ -343,12 +344,14 @@ function renderKpis(){
   const abiertos = total - cerrados;
   const critA = f.filter(i=>i.categoria==='A' && i.estado!=='CERRADO').length;
   const critB = f.filter(i=>i.categoria==='B' && i.estado!=='CERRADO').length;
+  const critC = f.filter(i=>i.categoria==='C' && i.estado!=='CERRADO').length;
   const avance = total ? Math.round((cerrados/total)*100) : 0;
   document.getElementById('kpiTotal').textContent = total;
   document.getElementById('kpiAbiertos').textContent = abiertos;
   document.getElementById('kpiCerrados').textContent = cerrados;
   document.getElementById('kpiCritA').textContent = critA;
   document.getElementById('kpiCritB').textContent = critB;
+  document.getElementById('kpiCritC').textContent = critC;
   document.getElementById('kpiAvance').textContent = avance + '%';
 }
 
