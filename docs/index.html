@@ -255,6 +255,52 @@
   </div>
 </dialog>
 
+<dialog id="dlgDetail">
+  <h3>Detalle del pendiente <span class="tag" id="detId" style="font-size:11px;"></span></h3>
+  <div class="field"><label>TAG</label><input id="detTag"></div>
+  <div class="field"><label>SISTEMA-SUBSISTEMA-DESCRIPCIÓN</label><input id="detSistema"></div>
+  <div class="field"><label>DESCRIPCIÓN DEL PENDIENTE</label><textarea id="detDesc" rows="2"></textarea></div>
+  <div class="field"><label>UBICACIÓN</label><input id="detUbicacion"></div>
+  <div class="field"><label>ESPECIALIDAD</label>
+    <select id="detEspecialidad"><option>Piping (P)</option><option>Mecánica (M)</option><option>Instrumentación (I)</option><option>Electricidad (E)</option><option>Civil</option></select>
+  </div>
+  <div class="field"><label>CATEGORÍA</label>
+    <select id="detCategoria"><option>A</option><option>B</option><option>C</option></select>
+  </div>
+  <div class="field"><label>ÁREA QUE EMITE</label>
+    <select id="detResp">
+      <option value="">-- Seleccionar --</option>
+      <option>Construcción</option><option>Ingeniería (OT)</option><option>Calidad</option>
+      <option>Precom</option><option>Seguridad</option><option>Cliente</option>
+    </select>
+  </div>
+  <div class="field"><label>ÁREA(S) RESPONSABLE(S) DE CIERRE</label>
+    <div style="display:flex; flex-wrap:wrap; gap:10px;">
+      <label style="flex-direction:row; align-items:center; gap:5px; font-family:'Inter',sans-serif; font-size:13px; color:var(--text);"><input type="checkbox" class="chkDetAreaCierre" value="Construcción"> Construcción</label>
+      <label style="flex-direction:row; align-items:center; gap:5px; font-family:'Inter',sans-serif; font-size:13px; color:var(--text);"><input type="checkbox" class="chkDetAreaCierre" value="Ingeniería (OT)"> Ingeniería (OT)</label>
+      <label style="flex-direction:row; align-items:center; gap:5px; font-family:'Inter',sans-serif; font-size:13px; color:var(--text);"><input type="checkbox" class="chkDetAreaCierre" value="Calidad"> Calidad</label>
+      <label style="flex-direction:row; align-items:center; gap:5px; font-family:'Inter',sans-serif; font-size:13px; color:var(--text);"><input type="checkbox" class="chkDetAreaCierre" value="Precom"> Precom</label>
+      <label style="flex-direction:row; align-items:center; gap:5px; font-family:'Inter',sans-serif; font-size:13px; color:var(--text);"><input type="checkbox" class="chkDetAreaCierre" value="Seguridad"> Seguridad</label>
+      <label style="flex-direction:row; align-items:center; gap:5px; font-family:'Inter',sans-serif; font-size:13px; color:var(--text);"><input type="checkbox" class="chkDetAreaCierre" value="Cliente"> Cliente</label>
+    </div>
+  </div>
+  <div class="field"><label>FASE</label><input id="detFase"></div>
+  <div class="field"><label>HITO</label><input id="detHito"></div>
+  <div class="field"><label>ESTADO</label>
+    <select id="detEstado"><option>ABIERTO</option><option>CERRADO</option></select>
+  </div>
+  <div class="field"><label>FECHA DE ELEVADO</label><input type="date" id="detFElevado"></div>
+  <div class="field"><label>FECHA PROGRAMADA DE CIERRE</label><input type="date" id="detFProg"></div>
+  <div class="field"><label>FECHA REAL DE CIERRE</label><input type="date" id="detFReal"></div>
+  <div class="field"><label>REFERENTE DE CIERRE</label><input id="detReferente"></div>
+  <div class="field"><label>OBSERVACIONES</label><textarea id="detObs" rows="2"></textarea></div>
+  <div class="dialog-actions">
+    <button class="btn" id="btnDeleteDetail" style="border-color:var(--red); color:var(--red); margin-right:auto;">Eliminar</button>
+    <button class="btn" id="btnCancelDetail">Cerrar</button>
+    <button class="btn primary" id="btnSaveDetail">Guardar cambios</button>
+  </div>
+</dialog>
+
 <script>
 const STORAGE_KEY = 'punchlist_items_v2';
 let items = [];
@@ -402,6 +448,8 @@ function renderKanban(){
     subset.slice(0,150).forEach(i=>{
       const div = document.createElement('div');
       div.className = 'card';
+      div.style.cursor = 'pointer';
+      div.addEventListener('click', ()=>openDetail(i.id));
       div.innerHTML = `
         ${(i.fase || i.hito) ? `<div class="breadcrumb">${[i.fase,i.hito].filter(Boolean).join(' › ')}</div>` : ''}
         <div class="ss">${i.tag || 's/d'} <span class="crit-badge crit-${i.categoria}">${i.categoria}</span></div>
@@ -548,6 +596,77 @@ document.getElementById('btnSaveAdd').addEventListener('click', ()=>{
   saveItems();
   render();
   dlg.close();
+});
+
+// --- modal de detalle / edición ---
+const dlgDetail = document.getElementById('dlgDetail');
+let editingId = null;
+
+function openDetail(id){
+  const item = items.find(i => String(i.id) === String(id));
+  if(!item) return;
+  editingId = item.id;
+  document.getElementById('detId').textContent = 'ID: ' + item.id;
+  document.getElementById('detTag').value = item.tag || '';
+  document.getElementById('detSistema').value = item.sistema || '';
+  document.getElementById('detDesc').value = item.descripcion || '';
+  document.getElementById('detUbicacion').value = item.ubicacion || '';
+  document.getElementById('detEspecialidad').value = item.especialidad || 'Piping (P)';
+  document.getElementById('detCategoria').value = item.categoria || 'C';
+  document.getElementById('detResp').value = item.responsable || '';
+  document.getElementById('detFase').value = item.fase || '';
+  document.getElementById('detHito').value = item.hito || '';
+  document.getElementById('detEstado').value = item.estado || 'ABIERTO';
+  document.getElementById('detFElevado').value = item.fecha_elevado || '';
+  document.getElementById('detFProg').value = item.fecha_prog_cierre || '';
+  document.getElementById('detFReal').value = item.fecha_real_cierre || '';
+  document.getElementById('detReferente').value = item.referente_cierre || '';
+  document.getElementById('detObs').value = item.observaciones || '';
+
+  const seleccionadas = (item.area_cierre||'').split(',').map(s=>s.trim());
+  document.querySelectorAll('.chkDetAreaCierre').forEach(chk=>{
+    chk.checked = seleccionadas.includes(chk.value);
+  });
+
+  dlgDetail.showModal();
+}
+
+document.getElementById('btnCancelDetail').addEventListener('click', ()=>dlgDetail.close());
+
+document.getElementById('btnSaveDetail').addEventListener('click', ()=>{
+  const idx = items.findIndex(i => String(i.id) === String(editingId));
+  if(idx === -1) return;
+  const areaCierreSeleccionadas = Array.from(document.querySelectorAll('.chkDetAreaCierre:checked')).map(c=>c.value).join(', ');
+  items[idx] = {
+    ...items[idx],
+    tag: document.getElementById('detTag').value,
+    sistema: document.getElementById('detSistema').value,
+    descripcion: document.getElementById('detDesc').value,
+    ubicacion: document.getElementById('detUbicacion').value,
+    especialidad: document.getElementById('detEspecialidad').value,
+    categoria: document.getElementById('detCategoria').value,
+    responsable: document.getElementById('detResp').value,
+    area_cierre: areaCierreSeleccionadas,
+    fase: document.getElementById('detFase').value,
+    hito: document.getElementById('detHito').value,
+    estado: document.getElementById('detEstado').value,
+    fecha_elevado: document.getElementById('detFElevado').value,
+    fecha_prog_cierre: document.getElementById('detFProg').value,
+    fecha_real_cierre: document.getElementById('detFReal').value,
+    referente_cierre: document.getElementById('detReferente').value,
+    observaciones: document.getElementById('detObs').value
+  };
+  saveItems();
+  render();
+  dlgDetail.close();
+});
+
+document.getElementById('btnDeleteDetail').addEventListener('click', ()=>{
+  if(!confirm('¿Eliminar este pendiente? Esta acción no se puede deshacer.')) return;
+  items = items.filter(i => String(i.id) !== String(editingId));
+  saveItems();
+  render();
+  dlgDetail.close();
 });
 
 loadInitialData();
