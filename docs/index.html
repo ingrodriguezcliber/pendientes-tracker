@@ -182,7 +182,8 @@
       <select id="fFase"><option value="">Fase: todas</option></select>
       <select id="fHito"><option value="">Hito: todos</option></select>
       <select id="fCategoria"><option value="">Categoría: todas</option></select>
-      <select id="fResponsable"><option value="">Responsable: todos</option></select>
+      <select id="fResponsable"><option value="">Área que emite: todas</option></select>
+      <select id="fAreaCierre"><option value="">Área de cierre: todas</option></select>
     </div>
     <div class="chart-box"><canvas id="burndownChart"></canvas></div>
   </div>
@@ -202,7 +203,7 @@
         <thead>
           <tr>
             <th>ID</th><th>Fase</th><th>Hito</th><th>TAG</th><th>Sistema-Subsistema</th><th>Descripción</th><th>Especialidad</th>
-            <th>Cat.</th><th>Responsable</th><th>F.Elevado</th><th>F.Prog.Cierre</th><th>F.Real Cierre</th><th>Estado</th>
+            <th>Cat.</th><th>Área emite</th><th>Área cierre</th><th>F.Elevado</th><th>F.Prog.Cierre</th><th>F.Real Cierre</th><th>Estado</th>
           </tr>
         </thead>
         <tbody id="tblBody"></tbody>
@@ -225,7 +226,23 @@
   <div class="field"><label>CATEGORÍA</label>
     <select id="inCategoria"><option>A</option><option>B</option><option>C</option></select>
   </div>
-  <div class="field"><label>RESPONSABLE DE LA ACCIÓN</label><input id="inResp"></div>
+  <div class="field"><label>ÁREA QUE EMITE</label>
+    <select id="inResp">
+      <option value="">-- Seleccionar --</option>
+      <option>Construcción</option><option>Ingeniería (OT)</option><option>Calidad</option>
+      <option>Precom</option><option>Seguridad</option><option>Cliente</option>
+    </select>
+  </div>
+  <div class="field"><label>ÁREA(S) RESPONSABLE(S) DE CIERRE</label>
+    <div style="display:flex; flex-wrap:wrap; gap:10px;">
+      <label style="flex-direction:row; align-items:center; gap:5px; font-family:'Inter',sans-serif; font-size:13px; color:var(--text);"><input type="checkbox" class="chkAreaCierre" value="Construcción"> Construcción</label>
+      <label style="flex-direction:row; align-items:center; gap:5px; font-family:'Inter',sans-serif; font-size:13px; color:var(--text);"><input type="checkbox" class="chkAreaCierre" value="Ingeniería (OT)"> Ingeniería (OT)</label>
+      <label style="flex-direction:row; align-items:center; gap:5px; font-family:'Inter',sans-serif; font-size:13px; color:var(--text);"><input type="checkbox" class="chkAreaCierre" value="Calidad"> Calidad</label>
+      <label style="flex-direction:row; align-items:center; gap:5px; font-family:'Inter',sans-serif; font-size:13px; color:var(--text);"><input type="checkbox" class="chkAreaCierre" value="Precom"> Precom</label>
+      <label style="flex-direction:row; align-items:center; gap:5px; font-family:'Inter',sans-serif; font-size:13px; color:var(--text);"><input type="checkbox" class="chkAreaCierre" value="Seguridad"> Seguridad</label>
+      <label style="flex-direction:row; align-items:center; gap:5px; font-family:'Inter',sans-serif; font-size:13px; color:var(--text);"><input type="checkbox" class="chkAreaCierre" value="Cliente"> Cliente</label>
+    </div>
+  </div>
   <div class="field"><label>ESTADO</label>
     <select id="inEstado"><option>ABIERTO</option><option>CERRADO</option></select>
   </div>
@@ -245,6 +262,7 @@ let chart = null;
 
 // mapeo flexible de encabezados: distintas variantes de nombre -> clave interna
 const HEADER_MAP = {
+  area_cierre: ['area_cierre','area de cierre','areas de cierre','area(s) de cierre'],
   fase: ['fase'],
   hito: ['hito'],
   id: ['id'],
@@ -310,6 +328,7 @@ function getFiltered(){
   const esp = document.getElementById('fEspecialidad').value;
   const cat = document.getElementById('fCategoria').value;
   const resp = document.getElementById('fResponsable').value;
+  const areaCierre = document.getElementById('fAreaCierre').value;
   const fase = document.getElementById('fFase').value;
   const hito = document.getElementById('fHito').value;
   const q = normKey(document.getElementById('fBuscar').value);
@@ -317,6 +336,7 @@ function getFiltered(){
     (!esp || i.especialidad === esp) &&
     (!cat || i.categoria === cat) &&
     (!resp || i.responsable === resp) &&
+    (!areaCierre || (i.area_cierre||'').split(',').map(s=>s.trim()).includes(areaCierre)) &&
     (!fase || i.fase === fase) &&
     (!hito || i.hito === hito) &&
     (!q || normKey(i.tag).includes(q) || normKey(i.sistema).includes(q) || normKey(i.descripcion).includes(q))
@@ -329,6 +349,8 @@ function populateFilters(){
   const resp = [...new Set(items.map(i=>i.responsable))].filter(Boolean).sort();
   const fase = [...new Set(items.map(i=>i.fase))].filter(Boolean).sort();
   const hito = [...new Set(items.map(i=>i.hito))].filter(Boolean).sort();
+  const AREAS = ['Construcción','Ingeniería (OT)','Calidad','Precom','Seguridad','Cliente'];
+  fillSelect('fAreaCierre', AREAS, 'Área de cierre: todas');
   fillSelect('fEspecialidad', esp, 'Especialidad: todas');
   fillSelect('fCategoria', cat, 'Categoría: todas');
   fillSelect('fResponsable', resp, 'Responsable: todos');
@@ -406,6 +428,7 @@ function renderTable(){
       <td>${i.especialidad||''}</td>
       <td><span class="crit-badge crit-${i.categoria}">${i.categoria}</span></td>
       <td>${i.responsable||''}</td>
+      <td>${i.area_cierre||''}</td>
       <td>${i.fecha_elevado||''}</td>
       <td>${i.fecha_prog_cierre||''}</td>
       <td>${i.fecha_real_cierre||''}</td>
@@ -477,7 +500,7 @@ function renderBurndown(){
 }
 
 // --- interactions ---
-['fEspecialidad','fCategoria','fResponsable','fFase','fHito'].forEach(id=>document.getElementById(id).addEventListener('change', render));
+['fEspecialidad','fCategoria','fResponsable','fAreaCierre','fFase','fHito'].forEach(id=>document.getElementById(id).addEventListener('change', render));
 document.getElementById('fBuscar').addEventListener('input', render);
 
 document.getElementById('btnUpload').addEventListener('click', ()=>document.getElementById('fileInput').click());
@@ -504,6 +527,7 @@ const dlg = document.getElementById('dlgAdd');
 document.getElementById('btnAdd').addEventListener('click', ()=>dlg.showModal());
 document.getElementById('btnCancelAdd').addEventListener('click', ()=>dlg.close());
 document.getElementById('btnSaveAdd').addEventListener('click', ()=>{
+  const areaCierreSeleccionadas = Array.from(document.querySelectorAll('.chkAreaCierre:checked')).map(c=>c.value).join(', ');
   const newItem = mapRow({
     id: crypto.randomUUID(),
     tag: document.getElementById('inTag').value,
@@ -513,6 +537,7 @@ document.getElementById('btnSaveAdd').addEventListener('click', ()=>{
     especialidad: document.getElementById('inEspecialidad').value,
     categoria: document.getElementById('inCategoria').value,
     responsable: document.getElementById('inResp').value,
+    area_cierre: areaCierreSeleccionadas,
     estado: document.getElementById('inEstado').value,
     fecha_elevado: document.getElementById('inFElevado').value,
     fecha_prog_cierre: document.getElementById('inFProg').value,
