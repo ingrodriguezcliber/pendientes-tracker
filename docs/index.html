@@ -182,10 +182,34 @@
     .kpis-grid{grid-template-columns:repeat(2,1fr);}
     .kanban{grid-template-columns:1fr;}
   }
+
+  /* --- Login overlay --- */
+  #loginOverlay{
+    position:fixed; inset:0; z-index:100; display:flex; align-items:center; justify-content:center;
+    background:var(--bg);
+  }
+  #loginOverlay .login-box{width:min(360px,90vw);}
+  #loginOverlay h2{font-family:'Space Grotesk',sans-serif; margin-top:0; font-size:18px;}
+  #loginOverlay .brand-eyebrow{margin-bottom:14px;}
+  #loginError{margin-top:4px;}
 </style>
 </head>
 <body>
-<div class="wrap">
+
+<div id="loginOverlay">
+  <div class="panel login-box">
+    <div class="brand-eyebrow">PECOM · PRECOMISIONADO</div>
+    <h2>Iniciar sesión</h2>
+    <div class="field"><label>Email</label><input type="email" id="loginEmail" autocomplete="username"></div>
+    <div class="field"><label>Contraseña</label><input type="password" id="loginPassword" autocomplete="current-password"></div>
+    <div id="loginError" style="color:var(--red); font-size:12.5px; display:none;"></div>
+    <div class="dialog-actions">
+      <button class="btn primary" id="btnLogin" style="width:100%;">Ingresar</button>
+    </div>
+  </div>
+</div>
+
+<div class="wrap" id="appContent" style="display:none;">
 
   <header class="top">
     <div>
@@ -197,6 +221,7 @@
       <input type="file" id="fileInput" accept=".csv">
       <button class="btn" id="btnExport">Exportar CSV</button>
       <button class="btn primary" id="btnAdd">+ Agregar pendiente</button>
+      <button class="btn" id="btnLogout">Salir</button>
     </div>
   </header>
 
@@ -264,7 +289,7 @@
     </div>
   </div>
 
-  <footer>datos guardados localmente en el navegador · base inicial: data/pendientes_real.csv</footer>
+  <footer>datos sincronizados en tiempo real vía Firebase · base inicial: data/pendientes_real.csv</footer>
 </div>
 
 <dialog id="dlgAdd">
@@ -355,11 +380,11 @@
 </dialog>
 
 <script>
-const STORAGE_KEY = 'punchlist_items_v2';
 let items = [];
 let chart = null;
 let kpiFiltro = null; // { estado: 'ABIERTO'|'CERRADO', categoria: 'A'|'B'|'C'|null }
 let hitosSeleccionados = new Set(); // vacío = todos
+let unsubscribeFirestore = null;
 
 // Catálogo completo de Fase/Hito según el cronograma (MS Project), incluye hitos sin pendientes emitidos todavía
 const FASES_HITOS_CRONOGRAMA = [{"fase": "Fase 1", "hito": "HITO 1 · DRENAJE  STZZ-1301B"}, {"fase": "Fase 1", "hito": "HITO 1 · DRENAJE STZZ-1301A"}, {"fase": "Fase 1", "hito": "HITO 1 · Ducto"}, {"fase": "Fase 1", "hito": "HITO 1 · FIBRA OPTICA: DESDE PAD C1A"}, {"fase": "Fase 1", "hito": "HITO 1 · Montaje de Trampas TSL 16\""}, {"fase": "Fase 1", "hito": "HITO 1 · Montaje de Trampas TSR 16\""}, {"fase": "Fase 1", "hito": "HITO 1 · SISTEMA ELECTRICO / PUESTA A TIERRA: ZONA TRAMPA RECEPTORA STZZ-1301B 16\""}, {"fase": "Fase 1", "hito": "HITO 2 · FlowLine Gas Lift 3\" (900 m) C1A-PI-CE1"}, {"fase": "Fase 1", "hito": "HITO 2 · FlowLine Producción 8\" (900 m) C1A-PI-CE1"}, {"fase": "Fase 1", "hito": "HITO 2 · Línea de Control 6\" (1.771 m) C1A a PC-CE1"}, {"fase": "Fase 1", "hito": "HITO 2 · Línea de Control 6\" (100 m) PC-CE1 a Tie In-T16\""}, {"fase": "Fase 1", "hito": "HITO 2 · Línea de Control 6\" (50 m) C1B a Tie In LC C1A"}, {"fase": "Fase 1", "hito": "HITO 3 · FlowLine Gas Lift 3\" (700 m) C1B-PI-CE1"}, {"fase": "Fase 1", "hito": "HITO 3 · FlowLine Producción 8\" (700 m) C1B-PI-CE1"}, {"fase": "Fase 1", "hito": "HITO 4 · FlowLine Gas Lift 3\" (1.400 m) PI-CE4 a C7B"}, {"fase": "Fase 1", "hito": "HITO 4 · FlowLine Producción 10\" (1.400 m) PI-CE4 a C7B"}, {"fase": "Fase 1", "hito": "HITO 4 · Línea de Control 6\" (100 m) PC-CE2 a Tie In T16\""}, {"fase": "Fase 1", "hito": "HITO 4 · Línea de Control 6\" (2.000 m) PC-CE2 a C7A"}, {"fase": "Fase 1", "hito": "HITO 4 · Línea de Control 6\" (250 m) C7B a Tie In LC C7A"}, {"fase": "Fase 1", "hito": "HITO 5 · FlowLine Gas Lift 3\" (700 m) PI-CE2 a C4A"}, {"fase": "Fase 1", "hito": "HITO 5 · FlowLine Producción 10\" (700 m) PI-CE2 a C4A"}, {"fase": "Fase 1", "hito": "HITO 5 · Línea de Control 6\" (1.600 m) PC-CE1 a C4A"}, {"fase": "Pedido de Obra 2", "hito": "Z - Flex · SUMIDERO / FLOWLINE FLEXI-PIPE"}, {"fase": "Pedido de Obra 3", "hito": "PO#3 · Cruce de Ruta Provincial 5 12\""}, {"fase": "Pedido de Obra 5", "hito": "Z - Flex · FLOWLINE FLEXI-PIPE A POZO 1021"}, {"fase": "Pedido de Obra 6", "hito": "PO#6 · FLOWLINE FLEXI-PIPE A POZO 1071"}];
@@ -410,23 +435,53 @@ function mapRow(raw){
   return out;
 }
 
-async function loadInitialData(){
-  const stored = localStorage.getItem(STORAGE_KEY);
-  if(stored){ items = JSON.parse(stored); render(); return; }
+// --- Firestore: lectura en tiempo real + escritura ---
+
+function subscribeToFirestore(){
+  if(unsubscribeFirestore) return; // ya suscripto
+  const colRef = window.firebaseCollection(window.firebaseDb, 'pendientes');
+  unsubscribeFirestore = window.firebaseOnSnapshot(colRef, async (snapshot) => {
+    if(snapshot.empty){
+      // Colección vacía: primera vez, importamos desde el CSV base y lo subimos a Firestore
+      await seedFromCsv();
+      return; // el propio seed dispara un nuevo snapshot al escribir los documentos
+    }
+    items = snapshot.docs.map(d => mapRow({ id: d.id, ...d.data() }));
+    render();
+  }, (err) => {
+    console.error('Error al leer Firestore:', err);
+  });
+}
+
+function unsubscribeFromFirestoreIfNeeded(){
+  if(unsubscribeFirestore){
+    unsubscribeFirestore();
+    unsubscribeFirestore = null;
+  }
+  items = [];
+}
+
+async function seedFromCsv(){
   try{
     const res = await fetch('pendientes_real.csv?v=' + Date.now(), {cache:'no-store'});
     const text = await res.text();
     const parsed = Papa.parse(text, {header:true, skipEmptyLines:true, delimiter:","});
-    items = parsed.data.map(mapRow);
-    saveItems();
-    render();
+    const parsedItems = parsed.data.map(mapRow);
+    for(const it of parsedItems){
+      await saveItem(it);
+    }
   }catch(e){
-    items = [];
-    render();
+    console.error('Error al importar CSV inicial:', e);
   }
 }
 
-function saveItems(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(items)); }
+async function saveItem(item){
+  await window.firebaseSetDoc(window.firebaseDocRef(window.firebaseDb, 'pendientes', String(item.id)), item);
+}
+
+async function deleteItemRemote(id){
+  await window.firebaseDeleteDoc(window.firebaseDocRef(window.firebaseDb, 'pendientes', String(id)));
+}
 
 function getFiltered(){
   const esp = document.getElementById('fEspecialidad').value;
@@ -700,10 +755,12 @@ document.getElementById('btnUpload').addEventListener('click', ()=>document.getE
 document.getElementById('fileInput').addEventListener('change', (e)=>{
   const file = e.target.files[0];
   if(!file) return;
-  Papa.parse(file, {header:true, skipEmptyLines:true, delimiter:",", complete:(res)=>{
-    items = res.data.map(mapRow);
-    saveItems();
-    render();
+  Papa.parse(file, {header:true, skipEmptyLines:true, delimiter:",", complete: async (res)=>{
+    const parsedItems = res.data.map(mapRow);
+    for(const it of parsedItems){
+      await saveItem(it);
+    }
+    // la lectura en tiempo real (onSnapshot) actualiza la tabla sola una vez que Firestore confirma la escritura
   }});
 });
 
@@ -720,7 +777,7 @@ document.getElementById('btnExport').addEventListener('click', ()=>{
 const dlg = document.getElementById('dlgAdd');
 document.getElementById('btnAdd').addEventListener('click', ()=>dlg.showModal());
 document.getElementById('btnCancelAdd').addEventListener('click', ()=>dlg.close());
-document.getElementById('btnSaveAdd').addEventListener('click', ()=>{
+document.getElementById('btnSaveAdd').addEventListener('click', async ()=>{
   const areaCierreSeleccionadas = Array.from(document.querySelectorAll('.chkAreaCierre:checked')).map(c=>c.value).join(', ');
   const newItem = mapRow({
     id: crypto.randomUUID(),
@@ -738,9 +795,7 @@ document.getElementById('btnSaveAdd').addEventListener('click', ()=>{
     fecha_real_cierre: document.getElementById('inEstado').value === 'CERRADO' ? new Date().toISOString().slice(0,10) : '',
     observaciones: document.getElementById('inObs').value
   });
-  items.push(newItem);
-  saveItems();
-  render();
+  await saveItem(newItem);
   dlg.close();
 });
 
@@ -779,11 +834,11 @@ function openDetail(id){
 
 document.getElementById('btnCancelDetail').addEventListener('click', ()=>dlgDetail.close());
 
-document.getElementById('btnSaveDetail').addEventListener('click', ()=>{
+document.getElementById('btnSaveDetail').addEventListener('click', async ()=>{
   const idx = items.findIndex(i => String(i.id) === String(editingId));
   if(idx === -1) return;
   const areaCierreSeleccionadas = Array.from(document.querySelectorAll('.chkDetAreaCierre:checked')).map(c=>c.value).join(', ');
-  items[idx] = {
+  const updatedItem = {
     ...items[idx],
     tag: document.getElementById('detTag').value,
     sistema: document.getElementById('detSistema').value,
@@ -802,16 +857,13 @@ document.getElementById('btnSaveDetail').addEventListener('click', ()=>{
     referente_cierre: document.getElementById('detReferente').value,
     observaciones: document.getElementById('detObs').value
   };
-  saveItems();
-  render();
+  await saveItem(updatedItem);
   dlgDetail.close();
 });
 
-document.getElementById('btnDeleteDetail').addEventListener('click', ()=>{
+document.getElementById('btnDeleteDetail').addEventListener('click', async ()=>{
   if(!confirm('¿Eliminar este pendiente? Esta acción no se puede deshacer.')) return;
-  items = items.filter(i => String(i.id) !== String(editingId));
-  saveItems();
-  render();
+  await deleteItemRemote(editingId);
   dlgDetail.close();
 });
 
@@ -829,7 +881,79 @@ document.getElementById('kpiCardA').addEventListener('click', ()=>aplicarKpiFilt
 document.getElementById('kpiCardB').addEventListener('click', ()=>aplicarKpiFiltro({estado:'ABIERTO', categoria:'B'}, 'kpiCardB'));
 document.getElementById('kpiCardC').addEventListener('click', ()=>aplicarKpiFiltro({estado:'ABIERTO', categoria:'C'}, 'kpiCardC'));
 
-loadInitialData();
+// Estas dos funciones son llamadas por el módulo de Firebase (más abajo) cuando cambia el estado de sesión
+window.startApp = subscribeToFirestore;
+window.stopApp = unsubscribeFromFirestoreIfNeeded;
 </script>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import {
+    getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut
+  } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+  import {
+    getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot
+  } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyDWWsX4F3ZiuoR9U_KVvTlDDV1J9rnPt0c",
+    authDomain: "pendientes---tracker---pecom.firebaseapp.com",
+    projectId: "pendientes---tracker---pecom",
+    storageBucket: "pendientes---tracker---pecom.firebasestorage.app",
+    messagingSenderId: "748730561638",
+    appId: "1:748730561638:web:3e2fd4f5a5be09c297e9a7"
+  };
+
+  const fbApp = initializeApp(firebaseConfig);
+  const auth = getAuth(fbApp);
+  const db = getFirestore(fbApp);
+
+  // Exponemos lo necesario para que el script clásico principal (arriba) pueda usarlo
+  window.firebaseDb = db;
+  window.firebaseCollection = collection;
+  window.firebaseDocRef = doc;
+  window.firebaseSetDoc = setDoc;
+  window.firebaseDeleteDoc = deleteDoc;
+  window.firebaseOnSnapshot = onSnapshot;
+
+  const loginOverlay = document.getElementById('loginOverlay');
+  const appContent = document.getElementById('appContent');
+  const loginError = document.getElementById('loginError');
+
+  onAuthStateChanged(auth, (user) => {
+    if (user) {
+      loginOverlay.style.display = 'none';
+      appContent.style.display = 'block';
+      if (typeof window.startApp === 'function') window.startApp();
+    } else {
+      loginOverlay.style.display = 'flex';
+      appContent.style.display = 'none';
+      if (typeof window.stopApp === 'function') window.stopApp();
+    }
+  });
+
+  async function tryLogin(){
+    const email = document.getElementById('loginEmail').value.trim();
+    const password = document.getElementById('loginPassword').value;
+    loginError.style.display = 'none';
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+    } catch (err) {
+      loginError.textContent = 'No se pudo iniciar sesión. Verificá el email y la contraseña.';
+      loginError.style.display = 'block';
+    }
+  }
+
+  document.getElementById('btnLogin').addEventListener('click', tryLogin);
+  document.getElementById('loginPassword').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') tryLogin();
+  });
+  document.getElementById('loginEmail').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') tryLogin();
+  });
+
+  document.getElementById('btnLogout').addEventListener('click', () => signOut(auth));
+</script>
+
 </body>
 </html>
