@@ -385,6 +385,19 @@ let chart = null;
 let kpiFiltro = null; // { estado: 'ABIERTO'|'CERRADO', categoria: 'A'|'B'|'C'|null }
 let hitosSeleccionados = new Set(); // vacío = todos
 let unsubscribeFirestore = null;
+let currentUserRole = 'viewer'; // restrictivo por defecto hasta que se confirme el rol real
+
+const DETAIL_FIELD_IDS = ['detTag','detSistema','detDesc','detUbicacion','detEspecialidad','detCategoria','detResp','detFase','detHito','detEstado','detFElevado','detFProg','detFReal','detReferente','detObs'];
+
+function applyRolePermissions(role){
+  currentUserRole = role;
+  const isEditor = role === 'editor';
+  document.getElementById('btnUpload').style.display = isEditor ? '' : 'none';
+  document.getElementById('btnAdd').style.display = isEditor ? '' : 'none';
+  document.getElementById('btnSaveDetail').style.display = isEditor ? '' : 'none';
+  document.getElementById('btnDeleteDetail').style.display = isEditor ? '' : 'none';
+}
+window.applyRolePermissions = applyRolePermissions;
 
 // Catálogo completo de Fase/Hito según el cronograma (MS Project), incluye hitos sin pendientes emitidos todavía
 const FASES_HITOS_CRONOGRAMA = [{"fase": "Fase 1", "hito": "HITO 1 · DRENAJE  STZZ-1301B"}, {"fase": "Fase 1", "hito": "HITO 1 · DRENAJE STZZ-1301A"}, {"fase": "Fase 1", "hito": "HITO 1 · Ducto"}, {"fase": "Fase 1", "hito": "HITO 1 · FIBRA OPTICA: DESDE PAD C1A"}, {"fase": "Fase 1", "hito": "HITO 1 · Montaje de Trampas TSL 16\""}, {"fase": "Fase 1", "hito": "HITO 1 · Montaje de Trampas TSR 16\""}, {"fase": "Fase 1", "hito": "HITO 1 · SISTEMA ELECTRICO / PUESTA A TIERRA: ZONA TRAMPA RECEPTORA STZZ-1301B 16\""}, {"fase": "Fase 1", "hito": "HITO 2 · FlowLine Gas Lift 3\" (900 m) C1A-PI-CE1"}, {"fase": "Fase 1", "hito": "HITO 2 · FlowLine Producción 8\" (900 m) C1A-PI-CE1"}, {"fase": "Fase 1", "hito": "HITO 2 · Línea de Control 6\" (1.771 m) C1A a PC-CE1"}, {"fase": "Fase 1", "hito": "HITO 2 · Línea de Control 6\" (100 m) PC-CE1 a Tie In-T16\""}, {"fase": "Fase 1", "hito": "HITO 2 · Línea de Control 6\" (50 m) C1B a Tie In LC C1A"}, {"fase": "Fase 1", "hito": "HITO 3 · FlowLine Gas Lift 3\" (700 m) C1B-PI-CE1"}, {"fase": "Fase 1", "hito": "HITO 3 · FlowLine Producción 8\" (700 m) C1B-PI-CE1"}, {"fase": "Fase 1", "hito": "HITO 4 · FlowLine Gas Lift 3\" (1.400 m) PI-CE4 a C7B"}, {"fase": "Fase 1", "hito": "HITO 4 · FlowLine Producción 10\" (1.400 m) PI-CE4 a C7B"}, {"fase": "Fase 1", "hito": "HITO 4 · Línea de Control 6\" (100 m) PC-CE2 a Tie In T16\""}, {"fase": "Fase 1", "hito": "HITO 4 · Línea de Control 6\" (2.000 m) PC-CE2 a C7A"}, {"fase": "Fase 1", "hito": "HITO 4 · Línea de Control 6\" (250 m) C7B a Tie In LC C7A"}, {"fase": "Fase 1", "hito": "HITO 5 · FlowLine Gas Lift 3\" (700 m) PI-CE2 a C4A"}, {"fase": "Fase 1", "hito": "HITO 5 · FlowLine Producción 10\" (700 m) PI-CE2 a C4A"}, {"fase": "Fase 1", "hito": "HITO 5 · Línea de Control 6\" (1.600 m) PC-CE1 a C4A"}, {"fase": "Pedido de Obra 2", "hito": "Z - Flex · SUMIDERO / FLOWLINE FLEXI-PIPE"}, {"fase": "Pedido de Obra 3", "hito": "PO#3 · Cruce de Ruta Provincial 5 12\""}, {"fase": "Pedido de Obra 5", "hito": "Z - Flex · FLOWLINE FLEXI-PIPE A POZO 1021"}, {"fase": "Pedido de Obra 6", "hito": "PO#6 · FLOWLINE FLEXI-PIPE A POZO 1071"}];
@@ -829,6 +842,10 @@ function openDetail(id){
     chk.checked = seleccionadas.includes(chk.value);
   });
 
+  const soloLectura = currentUserRole !== 'editor';
+  DETAIL_FIELD_IDS.forEach(id=>{ document.getElementById(id).disabled = soloLectura; });
+  document.querySelectorAll('.chkDetAreaCierre').forEach(chk=>{ chk.disabled = soloLectura; });
+
   dlgDetail.showModal();
 }
 
@@ -892,7 +909,7 @@ window.stopApp = unsubscribeFromFirestoreIfNeeded;
     getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
   import {
-    getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot
+    getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot, getDoc
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
   const firebaseConfig = {
@@ -920,14 +937,27 @@ window.stopApp = unsubscribeFromFirestoreIfNeeded;
   const appContent = document.getElementById('appContent');
   const loginError = document.getElementById('loginError');
 
-  onAuthStateChanged(auth, (user) => {
+  onAuthStateChanged(auth, async (user) => {
     if (user) {
       loginOverlay.style.display = 'none';
       appContent.style.display = 'block';
+
+      let role = 'viewer'; // por defecto restrictivo, salvo que el documento confirme 'editor'
+      try {
+        const userDocSnap = await getDoc(doc(db, 'usuarios', user.uid));
+        if (userDocSnap.exists() && userDocSnap.data().rol === 'editor') {
+          role = 'editor';
+        }
+      } catch (e) {
+        console.error('Error al leer el rol del usuario:', e);
+      }
+      if (typeof window.applyRolePermissions === 'function') window.applyRolePermissions(role);
+
       if (typeof window.startApp === 'function') window.startApp();
     } else {
       loginOverlay.style.display = 'flex';
       appContent.style.display = 'none';
+      if (typeof window.applyRolePermissions === 'function') window.applyRolePermissions('viewer');
       if (typeof window.stopApp === 'function') window.stopApp();
     }
   });
