@@ -199,6 +199,54 @@
   #loginOverlay h2{font-family:'Space Grotesk',sans-serif; margin-top:0; font-size:18px;}
   #loginOverlay .brand-eyebrow{margin-bottom:14px;}
   #loginError{margin-top:4px;}
+  /* --- Estatus Index: tabla jerárquica --- */
+  #estatusTable{width:100%; border-collapse:collapse; font-size:12.5px;}
+  #estatusTable thead th{
+    text-align:left; font-family:'JetBrains Mono',monospace; font-size:10px; text-transform:uppercase;
+    letter-spacing:.05em; color:var(--muted); padding:10px 10px; border-bottom:1px solid var(--line);
+    background:var(--panel-2); white-space:nowrap;
+  }
+  #estatusTable th.num, #estatusTable td.num{text-align:center;}
+  #estatusTable td{padding:9px 10px; border-bottom:1px solid var(--line); vertical-align:middle;}
+
+  tr.erow-sistema td{background:#232F36; font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:13.5px; cursor:pointer;}
+  tr.erow-subsistema td{background:var(--panel-2); font-weight:600; cursor:pointer;}
+  tr.erow-tag td{background:rgba(255,255,255,0.02); font-weight:600; color:var(--text); cursor:pointer;}
+  tr.erow-discgroup td{color:var(--blue); font-weight:600; cursor:pointer;}
+  tr.erow-discgroup:hover td{background:var(--panel-2);}
+  tr.erow-registro td{background:rgba(255,255,255,0.015);}
+  tr.erow-registro:hover td{background:var(--panel-2);}
+
+  .e-toggle-icon{display:inline-block; width:14px; font-family:'JetBrains Mono',monospace; color:var(--muted); margin-right:6px;}
+  .e-indent-1{padding-left:26px;}
+  .e-indent-2{padding-left:46px;}
+  .e-indent-3{padding-left:66px;}
+  .e-indent-4{padding-left:92px;}
+
+  .e-referencia{display:block; font-family:'JetBrains Mono',monospace; font-size:10.5px; color:var(--muted); margin-top:2px;}
+
+  .e-progress-wrap{display:flex; align-items:center; gap:8px; min-width:110px;}
+  .e-progress-track{flex:1; height:6px; background:var(--line); border-radius:3px; overflow:hidden;}
+  .e-progress-fill{height:100%; background:var(--green); border-radius:3px; transition:width .2s ease;}
+  .e-progress-pct{font-family:'JetBrains Mono',monospace; font-size:11px; min-width:34px; text-align:right;}
+
+  .e-estado-badge{font-family:'JetBrains Mono',monospace; font-size:10px; font-weight:700; padding:3px 8px; border-radius:2px; white-space:nowrap;}
+  .e-estado-COMPLETO{background:rgba(76,175,125,.18); color:var(--green);}
+  .e-estado-EN_PROCESO{background:rgba(216,87,74,.18); color:var(--red);}
+  .e-estado-CON_PENDIENTES{background:rgba(232,163,61,.18); color:var(--amber);}
+
+  .e-chk-cell{text-align:center;}
+  .e-fecha-cell{font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--muted);}
+  .e-fecha-cell.filled{color:var(--text);}
+
+  .e-plist-btn{
+    width:26px; height:26px; border-radius:3px; border:1px solid var(--line); background:var(--panel-2);
+    color:var(--muted); font-family:'JetBrains Mono',monospace; font-weight:700; font-size:12px; cursor:pointer;
+  }
+  .e-plist-btn.active{background:rgba(216,87,74,.18); border-color:var(--red); color:var(--red);}
+  .e-plist-btn:disabled, input.e-chk:disabled{opacity:.4; cursor:not-allowed;}
+
+  .e-rcomp-cell{font-family:'JetBrains Mono',monospace;}
 </style>
 </head>
 <body>
@@ -317,15 +365,29 @@
         <h1>Estatus Index</h1>
       </div>
       <div class="top-actions">
+        <span id="estatusSyncNote" style="font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--muted); margin-right:6px;"></span>
         <button class="btn" id="btnLogoutEstatus">Salir</button>
       </div>
     </header>
-    <div class="panel" style="text-align:center; padding:60px 20px;">
-      <h2 style="justify-content:center;">Página en construcción</h2>
-      <p style="color:var(--muted); font-family:'Inter',sans-serif; font-size:14px; max-width:520px; margin:0 auto;">
-        Todavía no definimos el contenido de "Estatus Index". Contame qué información querés ver acá
-        (ej. estado consolidado por sistema, semáforos de avance, indicadores por especialidad) y lo armamos juntos.
-      </p>
+
+    <div class="panel" style="padding:0; overflow:hidden;">
+      <table id="estatusTable">
+        <thead>
+          <tr>
+            <th style="width:30%;">Sistema / Subsistema / TAG / Disciplina</th>
+            <th class="num">Av. Const</th>
+            <th>F. Const</th>
+            <th class="num">Av. QaQc</th>
+            <th>F. QaQc</th>
+            <th class="num">R.Comp</th>
+            <th class="num">R.Tot</th>
+            <th class="num">P.List</th>
+            <th>F. Comp</th>
+            <th style="width:150px;">Progreso</th>
+          </tr>
+        </thead>
+        <tbody id="estatusTblBody"></tbody>
+      </table>
     </div>
   </div>
 
@@ -962,9 +1024,305 @@ document.getElementById('kpiCardA').addEventListener('click', ()=>aplicarKpiFilt
 document.getElementById('kpiCardB').addEventListener('click', ()=>aplicarKpiFiltro({estado:'ABIERTO', categoria:'B'}, 'kpiCardB'));
 document.getElementById('kpiCardC').addEventListener('click', ()=>aplicarKpiFiltro({estado:'ABIERTO', categoria:'C'}, 'kpiCardC'));
 
+// ======================= ESTATUS INDEX =======================
+const REGISTRO_DISCIPLINA = {
+  "Equipos Paquetizados": "Mecánica (M)",
+  "Trampas Receptoras/Lanzadoras": "Mecánica (M)",
+  "Limpieza y Cierre de Equipos": "Mecánica (M)",
+  "Prueba de barrido de cañerías": "Piping (P)",
+  "Pruebas de presión": "Piping (P)",
+  "Instalación final de tuberías (Instalaciones de Superficie)": "Piping (P)",
+  "Instalación final de tuberías (Ductos)": "Piping (P)",
+  "Verificación de torque": "Piping (P)",
+  "PSV": "Instrumentación (I)",
+  "Instalación de Instrumentos": "Instrumentación (I)",
+  "Cable de Fibra óptica": "Instrumentación (I)",
+  "Gabinetes, paneles de control y JB": "Electricidad (E)",
+  "Calibración de Instrumentos": "Instrumentación (I)",
+  "Verificacion Y Prueba Tableros- General": "Electricidad (E)",
+  "Verificación Y Prueba De Continuidad/ Megado Cables De Potencia, Comando, Medición": "Electricidad (E)",
+  "Verificación Y Medición De Baterías": "Electricidad (E)",
+  "Verificación De Instalación Puesta A Tierra": "Electricidad (E)",
+  "Medición De Continuidad Punto A Punto. Equipos- Sistema": "Electricidad (E)",
+  "Verificación Y Medición  De  Botoneras-Tomas": "Electricidad (E)",
+  "Verificación Paneles Fotovoltaicos": "Electricidad (E)",
+  "Verificación De Torque En Barras Y Borneras": "Electricidad (E)",
+  "PROTECCION CATÓDICA E-023": "Electricidad (E)"
+};
+const DISCIPLINA_ORDER = ["Piping (P)", "Mecánica (M)", "Instrumentación (I)", "Electricidad (E)"];
+
+let estatusItems = [];
+let unsubscribeEstatus = null;
+let estatusIdCounter = 0;
+function euid(){ return 'e' + (estatusIdCounter++); }
+function efechaHoy(){ return new Date().toLocaleDateString('es-AR'); }
+
+function subscribeToEstatusFirestore(){
+  if(unsubscribeEstatus) return;
+  const colRef = window.firebaseCollection(window.firebaseDb, 'estatus_items');
+  unsubscribeEstatus = window.firebaseOnSnapshot(colRef, async (snapshot) => {
+    if(snapshot.empty){
+      await seedEstatusFromJson();
+      return;
+    }
+    estatusItems = snapshot.docs.map(d => ({ _id: d.id, ...d.data() }));
+    renderEstatus();
+  }, (err) => {
+    console.error('Error al leer Estatus Index:', err);
+  });
+}
+
+function unsubscribeEstatusIfNeeded(){
+  if(unsubscribeEstatus){ unsubscribeEstatus(); unsubscribeEstatus = null; }
+  estatusItems = [];
+}
+
+async function seedEstatusFromJson(){
+  const note = document.getElementById('estatusSyncNote');
+  try{
+    if(note) note.textContent = 'Importando datos iniciales…';
+    const res = await fetch('estatus_index_real.json?v=' + Date.now(), {cache:'no-store'});
+    const data = await res.json();
+    for(const item of data){
+      await window.firebaseSetDoc(window.firebaseDocRef(window.firebaseDb, 'estatus_items', item.tag), item);
+    }
+    if(note) note.textContent = '';
+  }catch(e){
+    console.error('Error al importar estatus_index_real.json:', e);
+    if(note) note.textContent = 'Error al importar datos iniciales';
+  }
+}
+
+async function saveEstatusItem(item){
+  const { _id, ...data } = item;
+  await window.firebaseSetDoc(window.firebaseDocRef(window.firebaseDb, 'estatus_items', _id), data);
+}
+
+function buildEstatusTree(items){
+  const sistemas = {};
+  items.forEach(it=>{
+    const sKey = it.sistema_codigo || '—';
+    if(!sistemas[sKey]) sistemas[sKey] = { codigo:sKey, desc: it.sistema_desc || '', subsistemas:{} };
+    const subKey = it.subsistema_codigo || '—';
+    if(!sistemas[sKey].subsistemas[subKey]) sistemas[sKey].subsistemas[subKey] = { codigo:subKey, desc: it.subsistema_desc || '', tags:[] };
+    sistemas[sKey].subsistemas[subKey].tags.push(it);
+  });
+  const collator = new Intl.Collator(undefined, {numeric:true});
+  return Object.values(sistemas).sort((a,b)=>collator.compare(a.codigo,b.codigo)).map(s=>({
+    ...s,
+    subsistemas: Object.values(s.subsistemas).sort((a,b)=>collator.compare(a.codigo,b.codigo))
+  }));
+}
+
+function ecalcAgg(tags){
+  const allRegistros = tags.flatMap(t=>t.registros||[]);
+  const rtot = allRegistros.length;
+  const rcomp = allRegistros.filter(r=>r.estado===1).length;
+  const totalConstr = tags.length;
+  const okConstr = tags.filter(t=>t.constr).length;
+  const okQaqc = tags.filter(t=>t.qaqc).length;
+  return {
+    rtot, rcomp,
+    avCon: totalConstr ? Math.round((okConstr/totalConstr)*100) : 0,
+    avQaqc: totalConstr ? Math.round((okQaqc/totalConstr)*100) : 0
+  };
+}
+
+function renderEstatus(){
+  const tbody = document.getElementById('estatusTblBody');
+  if(!tbody) return;
+  tbody.innerHTML = '';
+  const tree = buildEstatusTree(estatusItems);
+
+  tree.forEach(sis=>{
+    const sisTags = sis.subsistemas.flatMap(sb=>sb.tags);
+    const sisAgg = ecalcAgg(sisTags);
+    const sisId = euid();
+    tbody.appendChild(erowGroup('sistema', 0, `${sis.codigo} · ${sis.desc}`, sisAgg, sisId, null));
+
+    sis.subsistemas.forEach(sub=>{
+      const subAgg = ecalcAgg(sub.tags);
+      const subId = euid();
+      tbody.appendChild(erowGroup('subsistema', 1, `${sub.codigo} · ${sub.desc}`, subAgg, subId, sisId));
+
+      sub.tags.forEach(tag=>{
+        const tagId = euid();
+        const registros = tag.registros || [];
+        const rtot = registros.length;
+        const rcomp = registros.filter(r=>r.estado===1).length;
+        tbody.appendChild(erowTag(tag, tagId, subId, rcomp, rtot));
+
+        DISCIPLINA_ORDER.forEach(discName=>{
+          const regsDisc = registros.filter(r=>REGISTRO_DISCIPLINA[r.nombre]===discName);
+          if(regsDisc.length===0) return;
+          const discId = euid();
+          const discRcomp = regsDisc.filter(r=>r.estado===1).length;
+          tbody.appendChild(erowDiscGroup(discName, discId, tagId, discRcomp, regsDisc.length));
+          regsDisc.forEach(reg=>{
+            const regIndex = registros.indexOf(reg);
+            tbody.appendChild(erowRegistro(reg, tag, discId, regIndex));
+          });
+        });
+      });
+    });
+  });
+
+  eattachToggleHandlers();
+  eattachInteractionHandlers();
+}
+
+function eprogressCellHTML(pct){
+  return `<div class="e-progress-wrap">
+    <div class="e-progress-track"><div class="e-progress-fill" style="width:${pct}%"></div></div>
+    <span class="e-progress-pct">${pct}%</span>
+  </div>`;
+}
+
+function erowGroup(kind, level, label, agg, rowId, parentId){
+  const tr = document.createElement('tr');
+  tr.className = 'erow-' + kind;
+  tr.dataset.rowid = rowId;
+  if(parentId) tr.dataset.parent = parentId;
+  const indentClass = level===0 ? '' : 'e-indent-1';
+  const progAvg = Math.round((agg.avCon + agg.avQaqc)/2);
+  tr.innerHTML = `
+    <td class="${indentClass}"><span class="e-toggle-icon" data-etoggle="${rowId}">▾</span>${label}</td>
+    <td class="num">${agg.avCon}%</td>
+    <td class="e-fecha-cell">${agg.avCon===100 ? efechaHoy() : '—'}</td>
+    <td class="num">${agg.avQaqc}%</td>
+    <td class="e-fecha-cell">${agg.avQaqc===100 ? efechaHoy() : '—'}</td>
+    <td class="num e-rcomp-cell">${agg.rcomp}</td>
+    <td class="num e-rcomp-cell">${agg.rtot}</td>
+    <td class="num">—</td>
+    <td class="e-fecha-cell">—</td>
+    <td>${eprogressCellHTML(progAvg)}</td>
+  `;
+  return tr;
+}
+
+function erowTag(tag, tagId, parentId, rcomp, rtot){
+  const tr = document.createElement('tr');
+  tr.className = 'erow-tag';
+  tr.dataset.rowid = tagId;
+  tr.dataset.parent = parentId;
+  const registrosCompletos = rtot > 0 && rcomp === rtot;
+  const completo = tag.constr && tag.qaqc && registrosCompletos;
+  let estadoKey, estadoLabel;
+  if(tag.plist){ estadoKey='CON_PENDIENTES'; estadoLabel='CON PENDIENTES'; }
+  else if(completo){ estadoKey='COMPLETO'; estadoLabel='COMPLETO'; }
+  else { estadoKey='EN_PROCESO'; estadoLabel='EN PROCESO'; }
+  const fComp = estadoKey==='COMPLETO' ? (tag.fecha_comp || efechaHoy()) : '—';
+  const soloLectura = currentUserRole !== 'editor';
+  tr.innerHTML = `
+    <td class="e-indent-2"><span class="e-toggle-icon" data-etoggle="${tagId}">▾</span>${tag.tag}<span class="e-referencia">${tag.referencia||''}</span></td>
+    <td class="e-chk-cell"><input type="checkbox" class="e-chk e-chk-constr" ${tag.constr?'checked':''} ${soloLectura?'disabled':''}></td>
+    <td class="e-fecha-cell ${tag.constr?'filled':''}">${tag.constr ? (tag.fecha_const || efechaHoy()) : '—'}</td>
+    <td class="e-chk-cell"><input type="checkbox" class="e-chk e-chk-qaqc" ${tag.qaqc?'checked':''} ${soloLectura?'disabled':''}></td>
+    <td class="e-fecha-cell ${tag.qaqc?'filled':''}">${tag.qaqc ? (tag.fecha_qaqc || efechaHoy()) : '—'}</td>
+    <td class="num e-rcomp-cell">${rcomp}</td>
+    <td class="num e-rcomp-cell">${rtot}</td>
+    <td class="num"><button class="e-plist-btn ${tag.plist?'active':''}" data-eplist ${soloLectura?'disabled':''}>P</button></td>
+    <td class="e-fecha-cell ${estadoKey==='COMPLETO'?'filled':''}">${fComp}</td>
+    <td><span class="e-estado-badge e-estado-${estadoKey}">${estadoLabel}</span></td>
+  `;
+  tr._tagRef = tag;
+  return tr;
+}
+
+function erowDiscGroup(discName, discId, tagId, rcomp, rtot){
+  const tr = document.createElement('tr');
+  tr.className = 'erow-discgroup';
+  tr.dataset.rowid = discId;
+  tr.dataset.parent = tagId;
+  tr.innerHTML = `
+    <td class="e-indent-3"><span class="e-toggle-icon" data-etoggle="${discId}">▾</span>${discName}</td>
+    <td class="num"></td><td class="e-fecha-cell"></td><td class="num"></td><td class="e-fecha-cell"></td>
+    <td class="num e-rcomp-cell">${rcomp}</td>
+    <td class="num e-rcomp-cell">${rtot}</td>
+    <td class="num"></td><td class="e-fecha-cell"></td><td></td>
+  `;
+  return tr;
+}
+
+function erowRegistro(reg, tagRef, discId, regIndex){
+  const tr = document.createElement('tr');
+  tr.className = 'erow-registro';
+  tr.dataset.parent = discId;
+  const soloLectura = currentUserRole !== 'editor';
+  tr.innerHTML = `
+    <td class="e-indent-4" style="color:var(--muted); font-size:12px;">${reg.nombre}</td>
+    <td class="num"></td><td class="e-fecha-cell"></td><td class="num"></td><td class="e-fecha-cell"></td>
+    <td class="e-chk-cell"><input type="checkbox" class="e-chk e-chk-registro" ${reg.estado===1?'checked':''} ${soloLectura?'disabled':''}></td>
+    <td class="num"></td><td class="num"></td><td class="e-fecha-cell"></td><td></td>
+  `;
+  tr._tagObjRef = tagRef;
+  tr._regIndex = regIndex;
+  return tr;
+}
+
+function eattachToggleHandlers(){
+  document.querySelectorAll('[data-etoggle]').forEach(el=>{
+    el.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      const rowId = el.dataset.etoggle;
+      const hidden = etoggleChildren(rowId);
+      el.textContent = hidden ? '▸' : '▾';
+    });
+  });
+}
+
+function etoggleChildren(rowId, forceHide){
+  const children = document.querySelectorAll(`[data-parent="${rowId}"]`);
+  let anyVisible = false;
+  children.forEach(c=>{ if(c.style.display !== 'none') anyVisible = true; });
+  const shouldHide = forceHide !== undefined ? forceHide : anyVisible;
+  children.forEach(c=>{
+    c.style.display = shouldHide ? 'none' : '';
+    const childRowId = c.dataset.rowid;
+    if(childRowId && shouldHide) etoggleChildren(childRowId, true);
+  });
+  return shouldHide;
+}
+
+function eattachInteractionHandlers(){
+  if(currentUserRole !== 'editor') return; // viewer: los checks ya están disabled, no hace falta escuchar cambios
+  document.querySelectorAll('.erow-tag').forEach(tr=>{
+    const tag = tr._tagRef;
+    tr.querySelector('.e-chk-constr').addEventListener('change', async (e)=>{
+      tag.constr = e.target.checked;
+      tag.fecha_const = tag.constr ? efechaHoy() : '';
+      await saveEstatusItem(tag);
+    });
+    tr.querySelector('.e-chk-qaqc').addEventListener('change', async (e)=>{
+      tag.qaqc = e.target.checked;
+      tag.fecha_qaqc = tag.qaqc ? efechaHoy() : '';
+      await saveEstatusItem(tag);
+    });
+    tr.querySelector('[data-eplist]').addEventListener('click', async ()=>{
+      tag.plist = !tag.plist;
+      await saveEstatusItem(tag);
+    });
+  });
+  document.querySelectorAll('.erow-registro').forEach(tr=>{
+    const tag = tr._tagObjRef;
+    const idx = tr._regIndex;
+    tr.querySelector('.e-chk-registro').addEventListener('change', async (e)=>{
+      tag.registros[idx].estado = e.target.checked ? 1 : 0;
+      await saveEstatusItem(tag);
+    });
+  });
+}
+// ==================== FIN ESTATUS INDEX =======================
+
 // Estas dos funciones son llamadas por el módulo de Firebase (más abajo) cuando cambia el estado de sesión
-window.startApp = subscribeToFirestore;
-window.stopApp = unsubscribeFromFirestoreIfNeeded;
+window.startApp = function(){
+  subscribeToFirestore();
+  subscribeToEstatusFirestore();
+};
+window.stopApp = function(){
+  unsubscribeFromFirestoreIfNeeded();
+  unsubscribeEstatusIfNeeded();
+};
 </script>
 
 <script type="module">
