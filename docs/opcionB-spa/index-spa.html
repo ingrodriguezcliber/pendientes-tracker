@@ -247,6 +247,38 @@
   .e-plist-btn:disabled, input.e-chk:disabled{opacity:.4; cursor:not-allowed;}
 
   .e-rcomp-cell{font-family:'JetBrains Mono',monospace;}
+
+  /* --- Estatus Index: dashboard superior --- */
+  .e-dash-grid{display:grid; grid-template-columns:1fr 1.4fr 1.6fr; gap:1px; background:var(--line); border:1px solid var(--line); margin-bottom:22px;}
+  .e-dash-panel{margin:0; border:none; border-radius:0; background:var(--panel);}
+  .e-dash-panel h2{font-size:13px;}
+  .e-dash-caption{text-align:center; font-family:'JetBrains Mono',monospace; font-size:12px; color:var(--muted); margin-top:8px;}
+
+  .e-gauges-grid{display:grid; grid-template-columns:repeat(2,1fr); gap:10px;}
+  .e-gauge-item{display:flex; flex-direction:column; align-items:center;}
+  .e-gauge-canvas-box{position:relative; width:100%; max-width:130px; height:70px;}
+  .e-gauge-pct{position:absolute; bottom:2px; left:0; right:0; text-align:center; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:19px;}
+  .e-gauge-label{font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; margin-top:2px; text-align:center;}
+  .e-gauge-frac{font-family:'JetBrains Mono',monospace; font-size:10.5px; color:var(--muted); text-align:center;}
+
+  .e-bars-scroll{max-height:300px; overflow-y:auto;}
+
+  .e-subflags-list{max-height:260px; overflow-y:auto; display:flex; flex-direction:column; gap:1px; background:var(--line); border:1px solid var(--line);}
+  .e-subflag-row{display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 12px; background:var(--panel);}
+  .e-subflag-name{font-family:'Inter',sans-serif; font-size:12.5px; color:var(--text);}
+  .e-switch-btn{
+    display:flex; align-items:center; gap:6px; border:1px solid var(--line); background:var(--panel-2);
+    color:var(--muted); font-family:'JetBrains Mono',monospace; font-weight:700; font-size:10.5px;
+    padding:5px 10px; border-radius:14px; cursor:pointer; white-space:nowrap;
+  }
+  .e-switch-btn .e-switch-dot{width:8px; height:8px; border-radius:50%; background:var(--muted);}
+  .e-switch-btn.on{background:rgba(216,87,74,.18); border-color:var(--red); color:var(--red);}
+  .e-switch-btn.on .e-switch-dot{background:var(--red);}
+  .e-switch-btn:disabled{opacity:.5; cursor:not-allowed;}
+
+  @media (max-width:1100px){
+    .e-dash-grid{grid-template-columns:1fr;}
+  }
 </style>
 </head>
 <body>
@@ -369,6 +401,30 @@
         <button class="btn" id="btnLogoutEstatus">Salir</button>
       </div>
     </header>
+
+    <div class="e-dash-grid">
+      <div class="panel e-dash-panel">
+        <h2>Avance global</h2>
+        <div class="donut-canvas-box" style="margin:0 auto;"><canvas id="estatusDonut"></canvas></div>
+        <div class="e-dash-caption" id="estatusDonutCaption">—</div>
+      </div>
+
+      <div class="panel e-dash-panel">
+        <h2>Avance por disciplina <span class="tag" id="estatusGaugeScope">Proyecto completo</span></h2>
+        <div class="e-gauges-grid" id="estatusGaugesGrid"></div>
+        <button class="btn" id="btnEstatusResetScope" style="display:none; margin-top:10px;">Ver todo el proyecto</button>
+      </div>
+
+      <div class="panel e-dash-panel">
+        <h2>Avance por subsistema <span class="tag">click para filtrar</span></h2>
+        <div class="e-bars-scroll"><canvas id="estatusBarChart"></canvas></div>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-bottom:22px;">
+      <h2>Pendientes por Subsistema <span class="tag">carga manual, temporal</span></h2>
+      <div class="e-subflags-list" id="estatusSubflagsList"></div>
+    </div>
 
     <div class="panel" style="padding:0; overflow:hidden;">
       <table id="estatusTable">
@@ -884,6 +940,9 @@ function renderBurndown(){
 document.getElementById('navSelect').addEventListener('change', (e)=>{
   document.querySelectorAll('.spa-view').forEach(v=>v.style.display='none');
   document.getElementById('view-' + e.target.value).style.display='block';
+  if(e.target.value === 'estatus' && typeof renderEstatusDashboard === 'function'){
+    renderEstatusDashboard(); // el canvas estaba oculto (width 0); se recalcula al mostrarse
+  }
 });
 document.getElementById('btnLogoutEstatus').addEventListener('click', ()=>document.getElementById('btnLogout').click());
 document.getElementById('btnLogoutMateriales').addEventListener('click', ()=>document.getElementById('btnLogout').click());
@@ -1047,7 +1106,9 @@ const REGISTRO_DISCIPLINA = {
   "Verificación Y Medición  De  Botoneras-Tomas": "Electricidad (E)",
   "Verificación Paneles Fotovoltaicos": "Electricidad (E)",
   "Verificación De Torque En Barras Y Borneras": "Electricidad (E)",
-  "PROTECCION CATÓDICA E-023": "Electricidad (E)"
+  "PROTECCION CATÓDICA E-023": "Electricidad (E)",
+  "Leak Test": "Piping (P)",
+  "Inertizado": "Piping (P)"
 };
 const DISCIPLINA_ORDER = ["Piping (P)", "Mecánica (M)", "Instrumentación (I)", "Electricidad (E)"];
 
@@ -1169,6 +1230,7 @@ function renderEstatus(){
 
   eattachToggleHandlers();
   eattachInteractionHandlers();
+  if(typeof renderEstatusDashboard === 'function') renderEstatusDashboard();
 }
 
 function eprogressCellHTML(pct){
@@ -1184,7 +1246,7 @@ function erowGroup(kind, level, label, agg, rowId, parentId){
   tr.dataset.rowid = rowId;
   if(parentId) tr.dataset.parent = parentId;
   const indentClass = level===0 ? '' : 'e-indent-1';
-  const progAvg = Math.round((agg.avCon + agg.avQaqc)/2);
+  const progPct = agg.rtot ? Math.round((agg.rcomp/agg.rtot)*100) : 0;
   tr.innerHTML = `
     <td class="${indentClass}"><span class="e-toggle-icon" data-etoggle="${rowId}">▾</span>${label}</td>
     <td class="num">${agg.avCon}%</td>
@@ -1195,7 +1257,7 @@ function erowGroup(kind, level, label, agg, rowId, parentId){
     <td class="num e-rcomp-cell">${agg.rtot}</td>
     <td class="num">—</td>
     <td class="e-fecha-cell">—</td>
-    <td>${eprogressCellHTML(progAvg)}</td>
+    <td>${eprogressCellHTML(progPct)}</td>
   `;
   return tr;
 }
@@ -1314,14 +1376,200 @@ function eattachInteractionHandlers(){
 }
 // ==================== FIN ESTATUS INDEX =======================
 
+// ==================== ESTATUS INDEX: DASHBOARD ====================
+let estatusSubflags = {};
+let unsubscribeSubflags = null;
+let estatusScopeSisCod = null;
+let estatusScopeSubCod = null;
+let estatusDonutChart = null;
+let estatusGaugeCharts = [];
+let estatusBarChart = null;
+
+function subflagKey(sisCod, subCod){ return sisCod + '__' + subCod; }
+
+function subscribeToSubflags(){
+  if(unsubscribeSubflags) return;
+  const colRef = window.firebaseCollection(window.firebaseDb, 'estatus_subsistema_flags');
+  unsubscribeSubflags = window.firebaseOnSnapshot(colRef, (snapshot) => {
+    const map = {};
+    snapshot.forEach(d => { map[d.id] = !!(d.data().con_pendientes); });
+    estatusSubflags = map;
+    renderEstatusDashboard();
+  }, (err) => console.error('Error al leer estatus_subsistema_flags:', err));
+}
+
+function unsubscribeSubflagsIfNeeded(){
+  if(unsubscribeSubflags){ unsubscribeSubflags(); unsubscribeSubflags = null; }
+  estatusSubflags = {};
+}
+
+async function toggleSubflag(sisCod, subCod){
+  if(currentUserRole !== 'editor') return;
+  const key = subflagKey(sisCod, subCod);
+  const newVal = !estatusSubflags[key];
+  await window.firebaseSetDoc(window.firebaseDocRef(window.firebaseDb, 'estatus_subsistema_flags', key), { con_pendientes: newVal });
+}
+
+function ecalcAggByDisciplina(tags){
+  const result = {};
+  DISCIPLINA_ORDER.forEach(d=>{
+    const regs = tags.flatMap(t=>(t.registros||[]).filter(r=>REGISTRO_DISCIPLINA[r.nombre]===d));
+    const rtot = regs.length;
+    const rcomp = regs.filter(r=>r.estado===1).length;
+    result[d] = { rtot, rcomp, pct: rtot ? Math.round((rcomp/rtot)*100) : 0 };
+  });
+  return result;
+}
+
+const GAUGE_COLORS = {'Piping (P)':'#4FA9E0','Mecánica (M)':'#E8A33D','Instrumentación (I)':'#4CAF7D','Electricidad (E)':'#D8574A'};
+
+function renderEstatusDashboard(){
+  const donutCanvas = document.getElementById('estatusDonut');
+  if(!donutCanvas || typeof Chart === 'undefined') return;
+
+  const tree = buildEstatusTree(estatusItems);
+  const allTags = tree.flatMap(s=>s.subsistemas.flatMap(sb=>sb.tags));
+
+  // --- Donut global ---
+  const globalAgg = ecalcAgg(allTags);
+  const pctGlobal = globalAgg.rtot ? Math.round((globalAgg.rcomp/globalAgg.rtot)*100) : 0;
+  if(estatusDonutChart) estatusDonutChart.destroy();
+  estatusDonutChart = new Chart(donutCanvas, {
+    type:'doughnut',
+    data:{ datasets:[{ data:[globalAgg.rcomp, globalAgg.rtot-globalAgg.rcomp], backgroundColor:['#4CAF7D','#2A363D'], borderColor:'#161E23', borderWidth:3 }] },
+    options:{ responsive:true, maintainAspectRatio:false, cutout:'68%', plugins:{ legend:{display:false}, tooltip:{backgroundColor:'#1C262C', borderColor:'#2A363D', borderWidth:1} } }
+  });
+  document.getElementById('estatusDonutCaption').textContent = `${pctGlobal}% · ${globalAgg.rcomp}/${globalAgg.rtot} registros`;
+
+  // --- Gauges por disciplina (con scope opcional por subsistema) ---
+  let scopedTags = allTags;
+  let scopeLabel = 'Proyecto completo';
+  if(estatusScopeSisCod !== null){
+    const sis = tree.find(s=>s.codigo===estatusScopeSisCod);
+    const sub = sis ? sis.subsistemas.find(sb=>sb.codigo===estatusScopeSubCod) : null;
+    if(sub){ scopedTags = sub.tags; scopeLabel = `${sub.codigo} · ${sub.desc}`; }
+  }
+  document.getElementById('estatusGaugeScope').textContent = scopeLabel;
+  document.getElementById('btnEstatusResetScope').style.display = estatusScopeSisCod !== null ? 'inline-block' : 'none';
+
+  const discAgg = ecalcAggByDisciplina(scopedTags);
+  estatusGaugeCharts.forEach(c=>c && c.destroy());
+  estatusGaugeCharts = [];
+  const gaugesGrid = document.getElementById('estatusGaugesGrid');
+  gaugesGrid.innerHTML = DISCIPLINA_ORDER.map(discName=>{
+    const agg = discAgg[discName];
+    const canvasId = 'gauge_' + discName.replace(/[^a-zA-Z]/g,'');
+    return `<div class="e-gauge-item">
+      <div class="e-gauge-canvas-box">
+        <canvas id="${canvasId}"></canvas>
+        <div class="e-gauge-pct">${agg.pct}%</div>
+      </div>
+      <div class="e-gauge-label">${discName.split(' (')[0]}</div>
+      <div class="e-gauge-frac">${agg.rcomp}/${agg.rtot}</div>
+    </div>`;
+  }).join('');
+  DISCIPLINA_ORDER.forEach(discName=>{
+    const agg = discAgg[discName];
+    const canvasId = 'gauge_' + discName.replace(/[^a-zA-Z]/g,'');
+    const ctx = document.getElementById(canvasId);
+    if(!ctx) return;
+    const color = GAUGE_COLORS[discName] || '#4FA9E0';
+    estatusGaugeCharts.push(new Chart(ctx, {
+      type:'doughnut',
+      data:{ datasets:[{ data:[agg.pct, 100-agg.pct], backgroundColor:[color, '#2A363D'], borderWidth:0 }] },
+      options:{ responsive:true, maintainAspectRatio:false, circumference:180, rotation:270, cutout:'75%', plugins:{ legend:{display:false}, tooltip:{enabled:false} } }
+    }));
+  });
+
+  // --- Barras por subsistema (click para filtrar los gauges) ---
+  const subList = [];
+  tree.forEach(sis=>{
+    sis.subsistemas.forEach(sub=>{
+      const agg = ecalcAgg(sub.tags);
+      const pct = agg.rtot ? Math.round((agg.rcomp/agg.rtot)*100) : 0;
+      subList.push({ sisCod:sis.codigo, subCod:sub.codigo, label:`${sis.codigo}.${sub.codigo} · ${sub.desc}`, pct, rcomp:agg.rcomp, rtot:agg.rtot });
+    });
+  });
+
+  const barCanvas = document.getElementById('estatusBarChart');
+  if(barCanvas){
+    barCanvas.style.height = Math.max(300, subList.length * 22) + 'px';
+    if(estatusBarChart) estatusBarChart.destroy();
+    estatusBarChart = new Chart(barCanvas, {
+      type:'bar',
+      data:{
+        labels: subList.map(s=>s.label),
+        datasets:[{
+          data: subList.map(s=>s.pct),
+          backgroundColor: subList.map(s => (s.sisCod===estatusScopeSisCod && s.subCod===estatusScopeSubCod) ? '#E8A33D' : '#4FA9E0'),
+          borderRadius:2
+        }]
+      },
+      options:{
+        indexAxis:'y', responsive:true, maintainAspectRatio:false,
+        plugins:{
+          legend:{display:false},
+          tooltip:{ backgroundColor:'#1C262C', borderColor:'#2A363D', borderWidth:1,
+            callbacks:{ label:(ctx)=>{ const s=subList[ctx.dataIndex]; return `${s.pct}% (${s.rcomp}/${s.rtot})`; } } }
+        },
+        scales:{
+          x:{min:0, max:100, ticks:{color:'#7C8B93', font:{family:'JetBrains Mono', size:9}}, grid:{color:'rgba(255,255,255,0.04)'}},
+          y:{ticks:{color:'#7C8B93', font:{family:'Inter', size:10.5}}, grid:{display:false}}
+        },
+        onClick:(evt, elements)=>{
+          if(!elements.length) return;
+          const idx = elements[0].index;
+          const s = subList[idx];
+          if(estatusScopeSisCod===s.sisCod && estatusScopeSubCod===s.subCod){
+            estatusScopeSisCod = null; estatusScopeSubCod = null;
+          } else {
+            estatusScopeSisCod = s.sisCod; estatusScopeSubCod = s.subCod;
+          }
+          renderEstatusDashboard();
+        }
+      }
+    });
+  }
+
+  // --- Switches "CON PENDIENTES" por subsistema ---
+  const listEl = document.getElementById('estatusSubflagsList');
+  if(listEl){
+    const soloLectura = currentUserRole !== 'editor';
+    listEl.innerHTML = subList.map(s=>{
+      const key = subflagKey(s.sisCod, s.subCod);
+      const on = !!estatusSubflags[key];
+      return `<div class="e-subflag-row">
+        <span class="e-subflag-name">${s.label}</span>
+        <button class="e-switch-btn ${on?'on':''}" data-subflag-key="${key}" ${soloLectura?'disabled':''}>
+          <span class="e-switch-dot"></span>${on ? 'CON PENDIENTES ⚠' : 'SIN PENDIENTES'}
+        </button>
+      </div>`;
+    }).join('');
+    listEl.querySelectorAll('[data-subflag-key]').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const [sisCod, subCod] = btn.dataset.subflagKey.split('__');
+        toggleSubflag(sisCod, subCod);
+      });
+    });
+  }
+}
+
+document.getElementById('btnEstatusResetScope').addEventListener('click', ()=>{
+  estatusScopeSisCod = null; estatusScopeSubCod = null;
+  renderEstatusDashboard();
+});
+// ================= FIN ESTATUS INDEX: DASHBOARD ====================
+
 // Estas dos funciones son llamadas por el módulo de Firebase (más abajo) cuando cambia el estado de sesión
 window.startApp = function(){
   subscribeToFirestore();
   subscribeToEstatusFirestore();
+  subscribeToSubflags();
 };
 window.stopApp = function(){
   unsubscribeFromFirestoreIfNeeded();
   unsubscribeEstatusIfNeeded();
+  unsubscribeSubflagsIfNeeded();
 };
 </script>
 
