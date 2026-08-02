@@ -427,6 +427,9 @@
     </div>
 
     <div class="panel" style="padding:0; overflow:hidden;">
+      <div style="display:flex; justify-content:flex-end; padding:12px 14px; border-bottom:1px solid var(--line);">
+        <button class="btn" id="btnEstatusToggleAll">Contraer todo</button>
+      </div>
       <table id="estatusTable">
         <thead>
           <tr>
@@ -1118,6 +1121,10 @@ let estatusIdCounter = 0;
 function euid(){ return 'e' + (estatusIdCounter++); }
 function efechaHoy(){ return new Date().toLocaleDateString('es-AR'); }
 
+// Claves ESTABLES de filas colapsadas (sobreviven a los re-renders que dispara Firestore en cada edición)
+let estatusCollapsed = new Set();
+let estatusAllGroupKeys = [];
+
 function subscribeToEstatusFirestore(){
   if(unsubscribeEstatus) return;
   const colRef = window.firebaseCollection(window.firebaseDb, 'estatus_items');
@@ -1136,6 +1143,7 @@ function subscribeToEstatusFirestore(){
 function unsubscribeEstatusIfNeeded(){
   if(unsubscribeEstatus){ unsubscribeEstatus(); unsubscribeEstatus = null; }
   estatusItems = [];
+  estatusCollapsed.clear();
 }
 
 async function seedEstatusFromJson(){
@@ -1194,34 +1202,44 @@ function renderEstatus(){
   if(!tbody) return;
   tbody.innerHTML = '';
   const tree = buildEstatusTree(estatusItems);
+  estatusAllGroupKeys = [];
 
   tree.forEach(sis=>{
     const sisTags = sis.subsistemas.flatMap(sb=>sb.tags);
     const sisAgg = ecalcAgg(sisTags);
-    const sisId = euid();
-    tbody.appendChild(erowGroup('sistema', 0, `${sis.codigo} · ${sis.desc}`, sisAgg, sisId, null));
+    const sisKey = `S_${sis.codigo}`;
+    estatusAllGroupKeys.push(sisKey);
+    const sisHidden = false; // el nivel Sistema nunca está oculto por un ancestro
+    tbody.appendChild(erowGroup('sistema', 0, `${sis.codigo} · ${sis.desc}`, sisAgg, sisKey, sisHidden));
 
     sis.subsistemas.forEach(sub=>{
       const subAgg = ecalcAgg(sub.tags);
-      const subId = euid();
-      tbody.appendChild(erowGroup('subsistema', 1, `${sub.codigo} · ${sub.desc}`, subAgg, subId, sisId));
+      const subKey = `${sisKey}__${sub.codigo}`;
+      estatusAllGroupKeys.push(subKey);
+      const subHidden = estatusCollapsed.has(sisKey);
+      tbody.appendChild(erowGroup('subsistema', 1, `${sub.codigo} · ${sub.desc}`, subAgg, subKey, subHidden));
 
       sub.tags.forEach(tag=>{
-        const tagId = euid();
+        const tagKey = `${subKey}__${tag.tag}`;
+        estatusAllGroupKeys.push(tagKey);
+        const tagHidden = subHidden || estatusCollapsed.has(subKey);
         const registros = tag.registros || [];
         const rtot = registros.length;
         const rcomp = registros.filter(r=>r.estado===1).length;
-        tbody.appendChild(erowTag(tag, tagId, subId, rcomp, rtot));
+        tbody.appendChild(erowTag(tag, tagKey, rcomp, rtot, tagHidden));
 
         DISCIPLINA_ORDER.forEach(discName=>{
           const regsDisc = registros.filter(r=>REGISTRO_DISCIPLINA[r.nombre]===discName);
           if(regsDisc.length===0) return;
-          const discId = euid();
+          const discKey = `${tagKey}__${discName}`;
+          estatusAllGroupKeys.push(discKey);
+          const discHidden = tagHidden || estatusCollapsed.has(tagKey);
           const discRcomp = regsDisc.filter(r=>r.estado===1).length;
-          tbody.appendChild(erowDiscGroup(discName, discId, tagId, discRcomp, regsDisc.length));
+          tbody.appendChild(erowDiscGroup(discName, discKey, discRcomp, regsDisc.length, discHidden));
           regsDisc.forEach(reg=>{
             const regIndex = registros.indexOf(reg);
-            tbody.appendChild(erowRegistro(reg, tag, discId, regIndex));
+            const regHidden = discHidden || estatusCollapsed.has(discKey);
+            tbody.appendChild(erowRegistro(reg, tag, regIndex, regHidden));
           });
         });
       });
@@ -1230,6 +1248,8 @@ function renderEstatus(){
 
   eattachToggleHandlers();
   eattachInteractionHandlers();
+  const toggleAllBtn = document.getElementById('btnEstatusToggleAll');
+  if(toggleAllBtn) toggleAllBtn.textContent = estatusCollapsed.size > 0 ? 'Expandir todo' : 'Contraer todo';
   if(typeof renderEstatusDashboard === 'function') renderEstatusDashboard();
 }
 
@@ -1240,15 +1260,16 @@ function eprogressCellHTML(pct){
   </div>`;
 }
 
-function erowGroup(kind, level, label, agg, rowId, parentId){
+function erowGroup(kind, level, label, agg, key, hidden){
   const tr = document.createElement('tr');
   tr.className = 'erow-' + kind;
-  tr.dataset.rowid = rowId;
-  if(parentId) tr.dataset.parent = parentId;
+  tr.dataset.key = key;
+  if(hidden) tr.style.display = 'none';
   const indentClass = level===0 ? '' : 'e-indent-1';
   const progPct = agg.rtot ? Math.round((agg.rcomp/agg.rtot)*100) : 0;
+  const icon = estatusCollapsed.has(key) ? '▸' : '▾';
   tr.innerHTML = `
-    <td class="${indentClass}"><span class="e-toggle-icon" data-etoggle="${rowId}">▾</span>${label}</td>
+    <td class="${indentClass}"><span class="e-toggle-icon" data-etoggle="${key}">${icon}</span>${label}</td>
     <td class="num">${agg.avCon}%</td>
     <td class="e-fecha-cell">${agg.avCon===100 ? efechaHoy() : '—'}</td>
     <td class="num">${agg.avQaqc}%</td>
@@ -1262,11 +1283,11 @@ function erowGroup(kind, level, label, agg, rowId, parentId){
   return tr;
 }
 
-function erowTag(tag, tagId, parentId, rcomp, rtot){
+function erowTag(tag, key, rcomp, rtot, hidden){
   const tr = document.createElement('tr');
   tr.className = 'erow-tag';
-  tr.dataset.rowid = tagId;
-  tr.dataset.parent = parentId;
+  tr.dataset.key = key;
+  if(hidden) tr.style.display = 'none';
   const registrosCompletos = rtot > 0 && rcomp === rtot;
   const completo = tag.constr && tag.qaqc && registrosCompletos;
   let estadoKey, estadoLabel;
@@ -1275,8 +1296,9 @@ function erowTag(tag, tagId, parentId, rcomp, rtot){
   else { estadoKey='EN_PROCESO'; estadoLabel='EN PROCESO'; }
   const fComp = estadoKey==='COMPLETO' ? (tag.fecha_comp || efechaHoy()) : '—';
   const soloLectura = currentUserRole !== 'editor';
+  const icon = estatusCollapsed.has(key) ? '▸' : '▾';
   tr.innerHTML = `
-    <td class="e-indent-2"><span class="e-toggle-icon" data-etoggle="${tagId}">▾</span>${tag.tag}<span class="e-referencia">${tag.referencia||''}</span></td>
+    <td class="e-indent-2"><span class="e-toggle-icon" data-etoggle="${key}">${icon}</span>${tag.tag}<span class="e-referencia">${tag.referencia||''}</span></td>
     <td class="e-chk-cell"><input type="checkbox" class="e-chk e-chk-constr" ${tag.constr?'checked':''} ${soloLectura?'disabled':''}></td>
     <td class="e-fecha-cell ${tag.constr?'filled':''}">${tag.constr ? (tag.fecha_const || efechaHoy()) : '—'}</td>
     <td class="e-chk-cell"><input type="checkbox" class="e-chk e-chk-qaqc" ${tag.qaqc?'checked':''} ${soloLectura?'disabled':''}></td>
@@ -1291,13 +1313,14 @@ function erowTag(tag, tagId, parentId, rcomp, rtot){
   return tr;
 }
 
-function erowDiscGroup(discName, discId, tagId, rcomp, rtot){
+function erowDiscGroup(discName, key, rcomp, rtot, hidden){
   const tr = document.createElement('tr');
   tr.className = 'erow-discgroup';
-  tr.dataset.rowid = discId;
-  tr.dataset.parent = tagId;
+  tr.dataset.key = key;
+  if(hidden) tr.style.display = 'none';
+  const icon = estatusCollapsed.has(key) ? '▸' : '▾';
   tr.innerHTML = `
-    <td class="e-indent-3"><span class="e-toggle-icon" data-etoggle="${discId}">▾</span>${discName}</td>
+    <td class="e-indent-3"><span class="e-toggle-icon" data-etoggle="${key}">${icon}</span>${discName}</td>
     <td class="num"></td><td class="e-fecha-cell"></td><td class="num"></td><td class="e-fecha-cell"></td>
     <td class="num e-rcomp-cell">${rcomp}</td>
     <td class="num e-rcomp-cell">${rtot}</td>
@@ -1306,10 +1329,10 @@ function erowDiscGroup(discName, discId, tagId, rcomp, rtot){
   return tr;
 }
 
-function erowRegistro(reg, tagRef, discId, regIndex){
+function erowRegistro(reg, tagRef, regIndex, hidden){
   const tr = document.createElement('tr');
   tr.className = 'erow-registro';
-  tr.dataset.parent = discId;
+  if(hidden) tr.style.display = 'none';
   const soloLectura = currentUserRole !== 'editor';
   tr.innerHTML = `
     <td class="e-indent-4" style="color:var(--muted); font-size:12px;">${reg.nombre}</td>
@@ -1326,25 +1349,22 @@ function eattachToggleHandlers(){
   document.querySelectorAll('[data-etoggle]').forEach(el=>{
     el.addEventListener('click', (e)=>{
       e.stopPropagation();
-      const rowId = el.dataset.etoggle;
-      const hidden = etoggleChildren(rowId);
-      el.textContent = hidden ? '▸' : '▾';
+      const key = el.dataset.etoggle;
+      if(estatusCollapsed.has(key)) estatusCollapsed.delete(key);
+      else estatusCollapsed.add(key);
+      renderEstatus(); // re-render completo; el Set persiste, así que no se pierde el estado de otras ramas
     });
   });
 }
 
-function etoggleChildren(rowId, forceHide){
-  const children = document.querySelectorAll(`[data-parent="${rowId}"]`);
-  let anyVisible = false;
-  children.forEach(c=>{ if(c.style.display !== 'none') anyVisible = true; });
-  const shouldHide = forceHide !== undefined ? forceHide : anyVisible;
-  children.forEach(c=>{
-    c.style.display = shouldHide ? 'none' : '';
-    const childRowId = c.dataset.rowid;
-    if(childRowId && shouldHide) etoggleChildren(childRowId, true);
-  });
-  return shouldHide;
-}
+document.getElementById('btnEstatusToggleAll').addEventListener('click', ()=>{
+  if(estatusCollapsed.size > 0){
+    estatusCollapsed.clear(); // Expandir todo
+  } else {
+    estatusAllGroupKeys.forEach(k=>estatusCollapsed.add(k)); // Contraer todo
+  }
+  renderEstatus();
+});
 
 function eattachInteractionHandlers(){
   if(currentUserRole !== 'editor') return; // viewer: los checks ya están disabled, no hace falta escuchar cambios
