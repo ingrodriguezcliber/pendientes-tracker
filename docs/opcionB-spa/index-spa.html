@@ -1290,6 +1290,32 @@ function renderEstatus(){
           });
         });
       });
+
+      // TAGs sin ningún registro aplicable (los "111 huérfanos" originales, o cualquier TAG al
+      // que le hayan destildado todos los registros desde el formulario de edición) no tienen
+      // dónde ubicarse en las disciplinas de arriba — les damos un grupo propio para que sigan
+      // siendo visibles y editables en vez de desaparecer de la tabla.
+      const huerfanos = sub.tags.filter(tag => (tag.registros||[]).length === 0);
+      if(huerfanos.length > 0){
+        const discKey = `${subKey}__SIN_REGISTROS`;
+        estatusAllGroupKeys.push(discKey);
+        const discHidden = subHidden || estatusCollapsed.has(subKey);
+        const okConstr = huerfanos.filter(t=>t.constr).length;
+        const okQaqc = huerfanos.filter(t=>t.qaqc).length;
+        const discAgg = {
+          rcomp: 0, rtot: 0,
+          avCon: Math.round((okConstr/huerfanos.length)*100),
+          avQaqc: Math.round((okQaqc/huerfanos.length)*100)
+        };
+        tbody.appendChild(erowGroup('discgroup', 2, `⚠ Sin registros asignados (${huerfanos.length})`, discAgg, discKey, discHidden));
+
+        huerfanos.forEach(tag=>{
+          const tagKey = `${discKey}__${tag.tag}`;
+          estatusAllGroupKeys.push(tagKey);
+          const tagHidden = discHidden || estatusCollapsed.has(discKey);
+          tbody.appendChild(erowTag(tag, tagKey, 0, 0, tagHidden));
+        });
+      }
     });
   });
 
