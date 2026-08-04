@@ -323,6 +323,7 @@
       <input type="file" id="fileInput" accept=".csv">
       <button class="btn" id="btnExport">Exportar CSV</button>
       <button class="btn primary" id="btnAdd">+ Agregar pendiente</button>
+      <button class="btn" id="btnMiPerfil">Mi perfil</button>
       <button class="btn" id="btnLogout">Salir</button>
     </div>
   </header>
@@ -383,7 +384,7 @@
         <thead>
           <tr>
             <th>ID</th><th>Fase</th><th>Hito</th><th>TAG</th><th>Sistema-Subsistema</th><th>Descripción</th><th>Especialidad</th>
-            <th>Cat.</th><th>Área emite</th><th>Área cierre</th><th>F.Elevado</th><th>F.Prog.Cierre</th><th>F.Real Cierre</th><th>Estado</th>
+            <th>Cat.</th><th>Área emite</th><th>Área cierre</th><th>F.Elevado</th><th>F.Prog.Cierre</th><th>F.Real Cierre</th><th>Estado</th><th>Registrado por</th>
           </tr>
         </thead>
         <tbody id="tblBody"></tbody>
@@ -505,6 +506,12 @@
       <label style="flex-direction:row; align-items:center; gap:5px; font-family:'Inter',sans-serif; font-size:13px; color:var(--text);"><input type="checkbox" class="chkAreaCierre" value="Cliente"> Cliente</label>
     </div>
   </div>
+  <div class="field"><label>FASE</label>
+    <select id="inFase"><option value="">-- Seleccionar --</option></select>
+  </div>
+  <div class="field"><label>HITO</label>
+    <select id="inHito"><option value="">-- Seleccionar Fase primero --</option></select>
+  </div>
   <div class="field"><label>ESTADO</label>
     <select id="inEstado"><option>ABIERTO</option><option>CERRADO</option></select>
   </div>
@@ -546,8 +553,12 @@
       <label style="flex-direction:row; align-items:center; gap:5px; font-family:'Inter',sans-serif; font-size:13px; color:var(--text);"><input type="checkbox" class="chkDetAreaCierre" value="Cliente"> Cliente</label>
     </div>
   </div>
-  <div class="field"><label>FASE</label><input id="detFase"></div>
-  <div class="field"><label>HITO</label><input id="detHito"></div>
+  <div class="field"><label>FASE</label>
+    <select id="detFase"><option value="">-- Seleccionar --</option></select>
+  </div>
+  <div class="field"><label>HITO</label>
+    <select id="detHito"><option value="">-- Seleccionar Fase primero --</option></select>
+  </div>
   <div class="field"><label>ESTADO</label>
     <select id="detEstado"><option>ABIERTO</option><option>CERRADO</option></select>
   </div>
@@ -560,6 +571,21 @@
     <button class="btn" id="btnDeleteDetail" style="border-color:var(--red); color:var(--red); margin-right:auto;">Eliminar</button>
     <button class="btn" id="btnCancelDetail">Cerrar</button>
     <button class="btn primary" id="btnSaveDetail">Guardar cambios</button>
+  </div>
+</dialog>
+
+<dialog id="dlgMiPerfil" style="width:min(380px,90vw);">
+  <h3>Mi perfil</h3>
+  <p style="color:var(--muted); font-size:12.5px; font-family:'Inter',sans-serif; margin-top:-8px;">
+    Esto se usa para completar automáticamente quién registró cada pendiente nuevo.
+  </p>
+  <div class="field"><label>APELLIDO</label><input id="perfilApellido"></div>
+  <div class="field"><label>NOMBRE</label><input id="perfilNombre"></div>
+  <div class="field"><label>EMAIL</label><input id="perfilEmail" disabled style="opacity:.6;"></div>
+  <div id="perfilError" style="color:var(--red); font-size:12px; display:none;"></div>
+  <div class="dialog-actions">
+    <button class="btn" id="btnCancelPerfil">Cancelar</button>
+    <button class="btn primary" id="btnSavePerfil">Guardar</button>
   </div>
 </dialog>
 
@@ -592,6 +618,15 @@ let kpiFiltro = null; // { estado: 'ABIERTO'|'CERRADO', categoria: 'A'|'B'|'C'|n
 let hitosSeleccionados = new Set(); // vacío = todos
 let unsubscribeFirestore = null;
 let currentUserRole = 'viewer'; // restrictivo por defecto hasta que se confirme el rol real
+let currentUserProfile = { uid:'', email:'', nombre:'', apellido:'' };
+window.setCurrentUserProfile = function(profile){ currentUserProfile = profile || currentUserProfile; };
+
+function nombreCompletoUsuarioActual(){
+  const { nombre, apellido, email } = currentUserProfile;
+  if(apellido && nombre) return `${apellido}, ${nombre}`;
+  if(apellido || nombre) return (apellido || nombre);
+  return email || 'Desconocido';
+}
 
 const DETAIL_FIELD_IDS = ['detTag','detSistema','detDesc','detUbicacion','detEspecialidad','detCategoria','detResp','detFase','detHito','detEstado','detFElevado','detFProg','detFReal','detReferente','detObs'];
 
@@ -626,7 +661,8 @@ const HEADER_MAP = {
   fecha_real_cierre: ['fecha_real_cierre','fecha real de cierre'],
   estado: ['estado'],
   observaciones: ['observaciones'],
-  referente_cierre: ['referente_cierre','referente del cierre']
+  referente_cierre: ['referente_cierre','referente del cierre'],
+  registrado_por: ['registrado_por','registrado por']
 };
 
 function normKey(s){
@@ -652,6 +688,21 @@ function mapRow(raw){
   out.estado = out.estado.toUpperCase();
   out.categoria = out.categoria.toUpperCase();
   return out;
+}
+
+// Calcula el próximo ID correlativo PL-#### en base al máximo existente entre los pendientes cargados.
+// Nota: si dos usuarios agregan un pendiente casi al mismo instante, existe una remota posibilidad
+// de colisión (ambos calculan el mismo próximo número antes de que el otro se guarde). Con el volumen
+// de uso actual del equipo es un riesgo aceptable; si se vuelve un problema, se resuelve con un
+// contador atómico en Firestore (transacción).
+function generarSiguienteIdPendiente(){
+  let maxNum = 0;
+  items.forEach(it=>{
+    const m = /^PL-(\d+)$/.exec(String(it.id||'').trim());
+    if(m){ const n = parseInt(m[1],10); if(n>maxNum) maxNum = n; }
+  });
+  const siguiente = maxNum + 1;
+  return 'PL-' + String(siguiente).padStart(4,'0');
 }
 
 // --- Firestore: lectura en tiempo real + escritura ---
@@ -781,6 +832,32 @@ function renderHitoMultiselect(opcionesDisponibles){
   actualizarBotonHito();
 }
 
+// Puebla un <select> de Fase y un <select> de Hito (dependiente), usando el catálogo FASES_HITOS_CRONOGRAMA.
+// Si se pasan valores actuales (faseActual/hitoActual) que no existen en el catálogo, los agrega igual
+// como opción extra, para no perder datos ya cargados en pendientes viejos.
+function poblarSelectsFaseHito(faseSelectEl, hitoSelectEl, faseActual, hitoActual){
+  const fases = [...new Set(FASES_HITOS_CRONOGRAMA.map(f=>f.fase))];
+  if(faseActual && !fases.includes(faseActual)) fases.push(faseActual);
+  fases.sort();
+
+  faseSelectEl.innerHTML = '<option value="">-- Seleccionar --</option>' + fases.map(f=>`<option value="${f}">${f}</option>`).join('');
+  faseSelectEl.value = faseActual || '';
+
+  function refrescarHitos(){
+    const faseElegida = faseSelectEl.value;
+    let hitos = faseElegida
+      ? FASES_HITOS_CRONOGRAMA.filter(f=>f.fase===faseElegida).map(f=>f.hito)
+      : [];
+    if(faseElegida && faseElegida===faseActual && hitoActual && !hitos.includes(hitoActual)) hitos.push(hitoActual);
+    hitoSelectEl.innerHTML = faseElegida
+      ? '<option value="">-- Seleccionar --</option>' + hitos.map(h=>`<option value="${h}">${h}</option>`).join('')
+      : '<option value="">-- Seleccionar Fase primero --</option>';
+  }
+  refrescarHitos();
+  hitoSelectEl.value = hitoActual || '';
+  faseSelectEl.onchange = ()=>{ refrescarHitos(); };
+}
+
 function actualizarBotonHito(){
   const btn = document.getElementById('msHitoBtn');
   const n = hitosSeleccionados.size;
@@ -903,6 +980,7 @@ function renderTable(){
       <td>${i.fecha_prog_cierre||''}</td>
       <td>${i.fecha_real_cierre||''}</td>
       <td><span class="estado-badge estado-${i.estado}">${i.estado}</span></td>
+      <td>${i.registrado_por||'—'}</td>
     </tr>
   `).join('');
 }
@@ -966,6 +1044,34 @@ function renderBurndown(){
   });
 }
 
+document.getElementById('btnMiPerfil').addEventListener('click', ()=>{
+  document.getElementById('perfilApellido').value = currentUserProfile.apellido || '';
+  document.getElementById('perfilNombre').value = currentUserProfile.nombre || '';
+  document.getElementById('perfilEmail').value = currentUserProfile.email || '';
+  document.getElementById('perfilError').style.display = 'none';
+  document.getElementById('dlgMiPerfil').showModal();
+});
+document.getElementById('btnCancelPerfil').addEventListener('click', ()=>document.getElementById('dlgMiPerfil').close());
+document.getElementById('btnSavePerfil').addEventListener('click', async ()=>{
+  const apellido = document.getElementById('perfilApellido').value.trim();
+  const nombre = document.getElementById('perfilNombre').value.trim();
+  const errEl = document.getElementById('perfilError');
+  errEl.style.display = 'none';
+  try{
+    await window.firebaseSetDoc(
+      window.firebaseDocRef(window.firebaseDb, 'usuarios', currentUserProfile.uid),
+      { nombre, apellido },
+      { merge: true }
+    );
+    currentUserProfile = { ...currentUserProfile, nombre, apellido };
+    document.getElementById('dlgMiPerfil').close();
+  }catch(e){
+    console.error('Error al guardar el perfil:', e);
+    errEl.textContent = 'No se pudo guardar. Puede que falten permisos en las reglas de Firestore.';
+    errEl.style.display = 'block';
+  }
+});
+
 // --- interactions ---
 document.getElementById('navSelect').addEventListener('change', (e)=>{
   document.querySelectorAll('.spa-view').forEach(v=>v.style.display='none');
@@ -1003,12 +1109,15 @@ document.getElementById('btnExport').addEventListener('click', ()=>{
 });
 
 const dlg = document.getElementById('dlgAdd');
-document.getElementById('btnAdd').addEventListener('click', ()=>dlg.showModal());
+document.getElementById('btnAdd').addEventListener('click', ()=>{
+  poblarSelectsFaseHito(document.getElementById('inFase'), document.getElementById('inHito'), '', '');
+  dlg.showModal();
+});
 document.getElementById('btnCancelAdd').addEventListener('click', ()=>dlg.close());
 document.getElementById('btnSaveAdd').addEventListener('click', async ()=>{
   const areaCierreSeleccionadas = Array.from(document.querySelectorAll('.chkAreaCierre:checked')).map(c=>c.value).join(', ');
   const newItem = mapRow({
-    id: crypto.randomUUID(),
+    id: generarSiguienteIdPendiente(),
     tag: document.getElementById('inTag').value,
     sistema: document.getElementById('inSistema').value,
     descripcion: document.getElementById('inDesc').value,
@@ -1017,11 +1126,14 @@ document.getElementById('btnSaveAdd').addEventListener('click', async ()=>{
     categoria: document.getElementById('inCategoria').value,
     responsable: document.getElementById('inResp').value,
     area_cierre: areaCierreSeleccionadas,
+    fase: document.getElementById('inFase').value,
+    hito: document.getElementById('inHito').value,
     estado: document.getElementById('inEstado').value,
     fecha_elevado: document.getElementById('inFElevado').value,
     fecha_prog_cierre: document.getElementById('inFProg').value,
     fecha_real_cierre: document.getElementById('inEstado').value === 'CERRADO' ? new Date().toISOString().slice(0,10) : '',
-    observaciones: document.getElementById('inObs').value
+    observaciones: document.getElementById('inObs').value,
+    registrado_por: nombreCompletoUsuarioActual()
   });
   await saveItem(newItem);
   dlg.close();
@@ -1043,8 +1155,7 @@ function openDetail(id){
   document.getElementById('detEspecialidad').value = item.especialidad || 'Piping (P)';
   document.getElementById('detCategoria').value = item.categoria || 'C';
   document.getElementById('detResp').value = item.responsable || '';
-  document.getElementById('detFase').value = item.fase || '';
-  document.getElementById('detHito').value = item.hito || '';
+  poblarSelectsFaseHito(document.getElementById('detFase'), document.getElementById('detHito'), item.fase || '', item.hito || '');
   document.getElementById('detEstado').value = item.estado || 'ABIERTO';
   document.getElementById('detFElevado').value = item.fecha_elevado || '';
   document.getElementById('detFProg').value = item.fecha_prog_cierre || '';
@@ -1765,13 +1876,20 @@ window.stopApp = function(){
       appContent.style.display = 'block';
 
       let role = 'viewer'; // por defecto restrictivo, salvo que el documento confirme 'editor'
+      let nombre = '', apellido = '';
       try {
         const userDocSnap = await getDoc(doc(db, 'usuarios', user.uid));
-        if (userDocSnap.exists() && userDocSnap.data().rol === 'editor') {
-          role = 'editor';
+        if (userDocSnap.exists()) {
+          const data = userDocSnap.data();
+          if (data.rol === 'editor') role = 'editor';
+          nombre = data.nombre || '';
+          apellido = data.apellido || '';
         }
       } catch (e) {
         console.error('Error al leer el rol del usuario:', e);
+      }
+      if (typeof window.setCurrentUserProfile === 'function') {
+        window.setCurrentUserProfile({ uid: user.uid, email: user.email, nombre, apellido });
       }
       if (typeof window.applyRolePermissions === 'function') window.applyRolePermissions(role);
 
