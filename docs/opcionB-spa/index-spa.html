@@ -149,6 +149,7 @@
   .kcol.porvalidar .card{border-left-color:var(--amber);}
   .kcol.cerrado .card{border-left-color:var(--green);}
   .card .ss{font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--blue); font-weight:700;}
+  .card .card-id{font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--text); font-weight:700; letter-spacing:.03em; margin-bottom:2px;}
   .card .desc{margin-top:3px; color:var(--text); line-height:1.35;}
   .card .breadcrumb{font-family:'JetBrains Mono',monospace; font-size:9.5px; color:var(--amber); text-transform:uppercase; letter-spacing:.04em; margin-bottom:3px;}
   .card .meta{margin-top:5px; font-size:10.5px; color:var(--muted); display:flex; justify-content:space-between; gap:8px;}
@@ -369,7 +370,7 @@
   <div class="panel">
     <h2>Burndown <span class="tag">Abiertos vs Cerrados</span></h2>
     <div class="filters">
-      <input type="text" id="fBuscar" placeholder="Buscar por TAG, sistema o descripción...">
+      <input type="text" id="fBuscar" placeholder="Buscar por ID, TAG, Subsistema o descripción...">
       <select id="fEspecialidad"><option value="">Especialidad: todas</option></select>
       <select id="fFase"><option value="">Fase: todas</option></select>
       <div class="multiselect" id="msHito">
@@ -818,7 +819,7 @@ function getFiltered(){
     (hitosSeleccionados.size === 0 || hitosSeleccionados.has(i.hito)) &&
     (!kpiFiltro || i.estado === kpiFiltro.estado) &&
     (!kpiFiltro || !kpiFiltro.categoria || i.categoria === kpiFiltro.categoria) &&
-    (!q || normKey(i.tag).includes(q) || normKey(i.sistema).includes(q) || normKey(i.descripcion).includes(q))
+    (!q || normKey(i.id).includes(q) || normKey(i.tag).includes(q) || normKey(i.sistema).includes(q) || normKey(i.descripcion).includes(q))
   );
 }
 
@@ -999,7 +1000,8 @@ function renderKanban(){
 
   function metaGridHTML(i){
     return `
-      ${(i.fase || i.hito) ? `<div class="breadcrumb">${[i.fase,i.hito].filter(Boolean).join(' › ')}</div>` : ''}
+      <div class="card-id">${i.id}</div>
+      ${(i.fase || i.hito || i.sistema) ? `<div class="breadcrumb">${[i.fase, i.hito, i.sistema ? ('Subsistema: ' + i.sistema) : ''].filter(Boolean).join(' › ')}</div>` : ''}
       <div class="ss">${i.tag || 's/d'} <span class="crit-badge crit-${i.categoria}">${i.categoria}</span></div>
       <div class="desc">${i.descripcion || '(sin descripcion)'}</div>
       <div class="card-meta-grid">
