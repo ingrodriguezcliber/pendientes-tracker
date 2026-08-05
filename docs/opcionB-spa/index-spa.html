@@ -132,19 +132,21 @@
   .ms-option input{margin-top:2px; flex-shrink:0;}
   .ms-empty{color:var(--muted); font-size:12px; padding:10px 6px; font-style:italic;}
 
-  .kanban{display:grid; grid-template-columns:repeat(2,1fr); gap:14px;}
+  .kanban{display:grid; grid-template-columns:repeat(3,1fr); gap:14px;}
   .kcol{background:var(--panel-2); border:1px solid var(--line); border-radius:4px; padding:12px; min-height:120px;}
   .kcol .khead{
     font-family:'JetBrains Mono',monospace; font-size:11px; text-transform:uppercase;
     letter-spacing:.06em; color:var(--muted); margin-bottom:10px; display:flex; justify-content:space-between;
   }
   .kcol.abierto .khead{color:var(--red);}
+  .kcol.porvalidar .khead{color:var(--amber);}
   .kcol.cerrado .khead{color:var(--green);}
   .card{
     background:var(--bg); border:1px solid var(--line); border-left:3px solid var(--muted);
     border-radius:3px; padding:9px 10px; margin-bottom:8px; font-size:12.5px;
   }
   .kcol.abierto .card{border-left-color:var(--red);}
+  .kcol.porvalidar .card{border-left-color:var(--amber);}
   .kcol.cerrado .card{border-left-color:var(--green);}
   .card .ss{font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--blue); font-weight:700;}
   .card .desc{margin-top:3px; color:var(--text); line-height:1.35;}
@@ -157,6 +159,16 @@
   }
   .card-meta-grid b{color:var(--text); font-weight:600;}
   .card-meta-grid span{overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .card-validar-btn{
+    margin-top:8px; width:100%; padding:6px; border-radius:3px; border:1px solid var(--amber);
+    background:rgba(232,163,61,.12); color:var(--amber); font-family:'JetBrains Mono',monospace;
+    font-weight:700; font-size:11px; text-transform:uppercase; letter-spacing:.04em; cursor:pointer;
+  }
+  .card-validar-btn:hover{background:rgba(232,163,61,.24);}
+  .card-validado-info{
+    margin-top:8px; padding-top:7px; border-top:1px dashed var(--line);
+    font-size:10.5px; color:var(--green); font-family:'JetBrains Mono',monospace;
+  }
   .crit-badge{font-family:'JetBrains Mono',monospace; font-weight:700; padding:1px 5px; border-radius:2px; font-size:10px;}
   .crit-A{background:rgba(216,87,74,.18); color:var(--red);}
   .crit-B{background:rgba(232,163,61,.18); color:var(--amber);}
@@ -380,6 +392,7 @@
     <h2>Tablero <span class="tag">por estado</span></h2>
     <div class="kanban">
       <div class="kcol abierto"><div class="khead"><span>Abierto</span><span id="cntAbierto">0</span></div><div id="colAbierto"></div></div>
+      <div class="kcol porvalidar"><div class="khead"><span>Pendientes por Validar</span><span id="cntPorValidar">0</span></div><div id="colPorValidar"></div></div>
       <div class="kcol cerrado"><div class="khead"><span>Cerrado</span><span id="cntCerrado">0</span></div><div id="colCerrado"></div></div>
     </div>
   </div>
@@ -590,6 +603,20 @@
     <button class="btn" id="btnDeleteDetail" style="border-color:var(--red); color:var(--red); margin-right:auto;">Eliminar</button>
     <button class="btn" id="btnCancelDetail">Cerrar</button>
     <button class="btn primary" id="btnSaveDetail">Guardar cambios</button>
+  </div>
+</dialog>
+
+<dialog id="dlgValidarPass" style="width:min(380px,90vw);">
+  <h3>Validar pendiente <span class="tag" id="validarPendienteId" style="font-size:11px;"></span></h3>
+  <p style="color:var(--muted); font-size:12.5px; font-family:'Inter',sans-serif; margin-top:-8px;">
+    Por seguridad, reingresá tu contraseña para confirmar la validación de inspección.
+  </p>
+  <div class="field"><label>EMAIL</label><input id="validarEmail" disabled style="opacity:.6;"></div>
+  <div class="field"><label>CONTRASEÑA</label><input type="password" id="validarPassword" autocomplete="current-password"></div>
+  <div id="validarError" style="color:var(--red); font-size:12px; display:none;"></div>
+  <div class="dialog-actions">
+    <button class="btn" id="btnCancelValidar">Cancelar</button>
+    <button class="btn primary" id="btnConfirmValidar">Confirmar validación</button>
   </div>
 </dialog>
 
@@ -959,32 +986,66 @@ function renderDonut(abiertos, cerrados, total){
 
 function renderKanban(){
   const f = getFiltered();
-  const cols = {ABIERTO:'colAbierto', CERRADO:'colCerrado'};
-  const cnts = {ABIERTO:'cntAbierto', CERRADO:'cntCerrado'};
-  Object.values(cols).forEach(id=>document.getElementById(id).innerHTML='');
-  Object.keys(cols).forEach(estado=>{
-    const subset = f.filter(i=>i.estado===estado);
-    document.getElementById(cnts[estado]).textContent = subset.length;
-    const container = document.getElementById(cols[estado]);
+  const puedeValidar = currentUserRole === 'editor' || currentUserRole === 'inspector';
+
+  const abiertos = f.filter(i=>i.estado==='ABIERTO');
+  const cerrados = f.filter(i=>i.estado==='CERRADO');
+  const porValidar = cerrados.filter(i=>i.validado_inspeccion!=='true');
+  const validados = cerrados.filter(i=>i.validado_inspeccion==='true');
+
+  document.getElementById('cntAbierto').textContent = abiertos.length;
+  document.getElementById('cntPorValidar').textContent = porValidar.length;
+  document.getElementById('cntCerrado').textContent = validados.length;
+
+  function metaGridHTML(i){
+    return `
+      ${(i.fase || i.hito) ? `<div class="breadcrumb">${[i.fase,i.hito].filter(Boolean).join(' › ')}</div>` : ''}
+      <div class="ss">${i.tag || 's/d'} <span class="crit-badge crit-${i.categoria}">${i.categoria}</span></div>
+      <div class="desc">${i.descripcion || '(sin descripcion)'}</div>
+      <div class="card-meta-grid">
+        <span><b>Especialidad:</b> ${i.especialidad || '-'}</span>
+        <span><b>Emite:</b> ${i.responsable || '-'}</span>
+        <span><b>Cierre Asignado a:</b> ${i.area_cierre || '-'} / ${i.referente_cierre || '-'}</span>
+        <span><b>F. Real Cierre:</b> ${i.fecha_real_cierre || '-'}</span>
+      </div>
+    `;
+  }
+
+  function pintarColumna(containerId, subset, tipo){
+    const container = document.getElementById(containerId);
+    container.innerHTML = '';
     subset.slice(0,150).forEach(i=>{
       const div = document.createElement('div');
       div.className = 'card';
-      div.style.cursor = 'pointer';
-      div.addEventListener('click', ()=>openDetail(i.id));
-      div.innerHTML = `
-        ${(i.fase || i.hito) ? `<div class="breadcrumb">${[i.fase,i.hito].filter(Boolean).join(' › ')}</div>` : ''}
-        <div class="ss">${i.tag || 's/d'} <span class="crit-badge crit-${i.categoria}">${i.categoria}</span></div>
-        <div class="desc">${i.descripcion || '(sin descripcion)'}</div>
-        <div class="card-meta-grid">
-          <span><b>Especialidad:</b> ${i.especialidad || '-'}</span>
-          <span><b>Emite:</b> ${i.responsable || '-'}</span>
-          <span><b>Cierre Asignado a:</b> ${i.area_cierre || '-'} / ${i.referente_cierre || '-'}</span>
-          <span><b>F. Real Cierre:</b> ${i.fecha_real_cierre || '-'}</span>
-        </div>
-      `;
+
+      if(tipo !== 'porvalidar' || currentUserRole !== 'inspector'){
+        div.style.cursor = 'pointer';
+        div.addEventListener('click', ()=>openDetail(i.id));
+      }
+
+      let footer = '';
+      if(tipo === 'porvalidar' && puedeValidar){
+        footer = `<button class="card-validar-btn" data-validar-id="${i.id}">Validar</button>`;
+      } else if(tipo === 'cerrado'){
+        footer = `<div class="card-validado-info">Validado por: ${i.validado_por || '—'} · ${i.fecha_validacion || '—'}</div>`;
+      }
+
+      div.innerHTML = metaGridHTML(i) + footer;
       container.appendChild(div);
+
+      if(tipo === 'porvalidar' && puedeValidar){
+        const btn = div.querySelector('[data-validar-id]');
+        btn.addEventListener('click', (e)=>{
+          e.stopPropagation();
+          abrirValidacionPendiente(i.id);
+        });
+      }
     });
-  });
+  }
+
+  pintarColumna('colAbierto', abiertos, 'abierto');
+  pintarColumna('colPorValidar', porValidar, 'porvalidar');
+  pintarColumna('colCerrado', validados, 'cerrado');
 }
 
 function renderTable(){
@@ -1095,6 +1156,56 @@ document.getElementById('btnSavePerfil').addEventListener('click', async ()=>{
   }catch(e){
     console.error('Error al guardar el perfil:', e);
     errEl.textContent = 'No se pudo guardar. Puede que falten permisos en las reglas de Firestore.';
+    errEl.style.display = 'block';
+  }
+});
+
+// --- Validación por inspección desde la ficha del kanban (sin entrar al formulario) ---
+let pendienteAValidarId = null;
+
+function abrirValidacionPendiente(id){
+  pendienteAValidarId = id;
+  document.getElementById('validarPendienteId').textContent = 'ID: ' + id;
+  document.getElementById('validarEmail').value = currentUserProfile.email || '';
+  document.getElementById('validarPassword').value = '';
+  document.getElementById('validarError').style.display = 'none';
+  document.getElementById('dlgValidarPass').showModal();
+}
+window.abrirValidacionPendiente = abrirValidacionPendiente;
+
+document.getElementById('btnCancelValidar').addEventListener('click', ()=>document.getElementById('dlgValidarPass').close());
+
+document.getElementById('btnConfirmValidar').addEventListener('click', async ()=>{
+  const password = document.getElementById('validarPassword').value;
+  const errEl = document.getElementById('validarError');
+  errEl.style.display = 'none';
+
+  if(!password){
+    errEl.textContent = 'Ingresá tu contraseña.';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  try{
+    await window.firebaseReautenticar(password);
+  }catch(e){
+    console.error('Error de reautenticación:', e);
+    errEl.textContent = 'Contraseña incorrecta. Probá de nuevo.';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  try{
+    const payload = {
+      validado_inspeccion: 'true',
+      validado_por: nombreCompletoUsuarioActual(),
+      fecha_validacion: fechaHoy()
+    };
+    await window.firebaseUpdateDoc(window.firebaseDocRef(window.firebaseDb, 'pendientes', String(pendienteAValidarId)), payload);
+    document.getElementById('dlgValidarPass').close();
+  }catch(e){
+    console.error('Error al guardar la validación:', e);
+    errEl.textContent = 'Se confirmó tu contraseña, pero no se pudo guardar (revisar reglas de Firestore).';
     errEl.style.display = 'block';
   }
 });
@@ -1902,7 +2013,8 @@ window.stopApp = function(){
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
   import {
-    getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut
+    getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut,
+    EmailAuthProvider, reauthenticateWithCredential
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
   import {
     getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot, getDoc, updateDoc
@@ -1927,6 +2039,10 @@ window.stopApp = function(){
   window.firebaseDocRef = doc;
   window.firebaseSetDoc = setDoc;
   window.firebaseUpdateDoc = updateDoc;
+  window.firebaseReautenticar = async function(password){
+    const cred = EmailAuthProvider.credential(auth.currentUser.email, password);
+    return reauthenticateWithCredential(auth.currentUser, cred);
+  };
   window.firebaseDeleteDoc = deleteDoc;
   window.firebaseOnSnapshot = onSnapshot;
 
