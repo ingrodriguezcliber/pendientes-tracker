@@ -170,6 +170,30 @@
     margin-top:8px; padding-top:7px; border-top:1px dashed var(--line);
     font-size:10.5px; color:var(--green); font-family:'JetBrains Mono',monospace;
   }
+  .kcol-pagination{
+    display:flex; align-items:center; justify-content:space-between; gap:8px;
+    margin-top:6px; padding-top:8px; border-top:1px solid var(--line);
+    font-family:'JetBrains Mono',monospace; font-size:10.5px; color:var(--muted);
+  }
+  .kcol-pag-btn{
+    background:var(--panel); border:1px solid var(--line); color:var(--text);
+    font-family:'JetBrains Mono',monospace; font-size:10px; padding:4px 8px; border-radius:3px; cursor:pointer;
+  }
+  .kcol-pag-btn:hover:not(:disabled){border-color:var(--amber); color:var(--amber);}
+  .kcol-pag-btn:disabled{opacity:.35; cursor:not-allowed;}
+
+  .burndown-log-grid{display:grid; grid-template-columns:2fr 1fr; gap:18px; margin-bottom:22px;}
+  .log-list{max-height:340px; overflow-y:auto; flex:1; display:flex; flex-direction:column; gap:1px; background:var(--line); border:1px solid var(--line); border-radius:3px;}
+  .log-entry{background:var(--panel); padding:8px 10px; font-size:11.5px;}
+  .log-entry .log-fecha{font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--muted);}
+  .log-entry .log-usuario{font-weight:600; color:var(--text); margin-left:6px;}
+  .log-entry .log-email{font-family:'JetBrains Mono',monospace; font-size:9.5px; color:var(--muted);}
+  .log-entry .log-desc{margin-top:2px; color:var(--text);}
+  .log-empty{color:var(--muted); font-size:12px; font-style:italic; padding:14px 4px;}
+
+  @media (max-width:1100px){
+    .burndown-log-grid{grid-template-columns:1fr;}
+  }
   .crit-badge{font-family:'JetBrains Mono',monospace; font-weight:700; padding:1px 5px; border-radius:2px; font-size:10px;}
   .crit-A{background:rgba(216,87,74,.18); color:var(--red);}
   .crit-B{background:rgba(232,163,61,.18); color:var(--amber);}
@@ -367,8 +391,19 @@
     </div>
   </div>
 
+  <div class="burndown-log-grid">
+    <div class="panel" style="margin-bottom:0;">
+      <h2>Burndown <span class="tag">Abiertos vs Cerrados</span></h2>
+      <div class="chart-box"><canvas id="burndownChart"></canvas></div>
+    </div>
+    <div class="panel" style="margin-bottom:0; display:flex; flex-direction:column;">
+      <h2>Historial de Acciones <span class="tag" id="logCount">0</span></h2>
+      <div class="log-list" id="logList"></div>
+    </div>
+  </div>
+
   <div class="panel">
-    <h2>Burndown <span class="tag">Abiertos vs Cerrados</span></h2>
+    <h2>Tablero <span class="tag">por estado</span></h2>
     <div class="filters">
       <input type="text" id="fBuscar" placeholder="Buscar por ID, TAG, Subsistema o descripción...">
       <select id="fEspecialidad"><option value="">Especialidad: todas</option></select>
@@ -386,11 +421,6 @@
       <select id="fResponsable"><option value="">Área que emite: todas</option></select>
       <select id="fAreaCierre"><option value="">Área de cierre: todas</option></select>
     </div>
-    <div class="chart-box"><canvas id="burndownChart"></canvas></div>
-  </div>
-
-  <div class="panel">
-    <h2>Tablero <span class="tag">por estado</span></h2>
     <div class="kanban">
       <div class="kcol abierto"><div class="khead"><span>Abierto</span><span id="cntAbierto">0</span></div><div id="colAbierto"></div></div>
       <div class="kcol porvalidar"><div class="khead"><span>Pendientes por Validar</span><span id="cntPorValidar">0</span></div><div id="colPorValidar"></div></div>
@@ -660,6 +690,7 @@
 
 <script>
 let items = [];
+let kanbanPage = { abierto:0, porvalidar:0, cerrado:0 };
 let chart = null;
 let kpiFiltro = null; // { estado: 'ABIERTO'|'CERRADO', categoria: 'A'|'B'|'C'|null }
 let hitosSeleccionados = new Set(); // vacío = todos
@@ -987,7 +1018,7 @@ function renderDonut(abiertos, cerrados, total){
 
 function renderKanban(){
   const f = getFiltered();
-  const puedeValidar = currentUserRole === 'editor' || currentUserRole === 'inspector';
+  const puedeValidar = currentUserRole === 'inspector'; // solo inspector valida; editor NO tiene esta función
 
   const abiertos = f.filter(i=>i.estado==='ABIERTO');
   const cerrados = f.filter(i=>i.estado==='CERRADO');
@@ -1013,10 +1044,19 @@ function renderKanban(){
     `;
   }
 
-  function pintarColumna(containerId, subset, tipo){
+  const KANBAN_PAGE_SIZE = 10;
+
+  function pintarColumna(containerId, subset, tipo, pageKey){
     const container = document.getElementById(containerId);
     container.innerHTML = '';
-    subset.slice(0,150).forEach(i=>{
+
+    const totalPaginas = Math.max(1, Math.ceil(subset.length / KANBAN_PAGE_SIZE));
+    if(kanbanPage[pageKey] >= totalPaginas) kanbanPage[pageKey] = totalPaginas - 1;
+    if(kanbanPage[pageKey] < 0) kanbanPage[pageKey] = 0;
+    const inicio = kanbanPage[pageKey] * KANBAN_PAGE_SIZE;
+    const pageItems = subset.slice(inicio, inicio + KANBAN_PAGE_SIZE);
+
+    pageItems.forEach(i=>{
       const div = document.createElement('div');
       div.className = 'card';
 
@@ -1043,11 +1083,22 @@ function renderKanban(){
         });
       }
     });
+
+    const pagWrap = document.createElement('div');
+    pagWrap.className = 'kcol-pagination';
+    pagWrap.innerHTML = `
+      <button class="kcol-pag-btn" data-pag-prev ${kanbanPage[pageKey]===0?'disabled':''}>‹ Anterior</button>
+      <span>Página ${kanbanPage[pageKey]+1} de ${totalPaginas}</span>
+      <button class="kcol-pag-btn" data-pag-next ${kanbanPage[pageKey]>=totalPaginas-1?'disabled':''}>Siguiente ›</button>
+    `;
+    pagWrap.querySelector('[data-pag-prev]').addEventListener('click', ()=>{ kanbanPage[pageKey]--; renderKanban(); });
+    pagWrap.querySelector('[data-pag-next]').addEventListener('click', ()=>{ kanbanPage[pageKey]++; renderKanban(); });
+    container.appendChild(pagWrap);
   }
 
-  pintarColumna('colAbierto', abiertos, 'abierto');
-  pintarColumna('colPorValidar', porValidar, 'porvalidar');
-  pintarColumna('colCerrado', validados, 'cerrado');
+  pintarColumna('colAbierto', abiertos, 'abierto', 'abierto');
+  pintarColumna('colPorValidar', porValidar, 'porvalidar', 'porvalidar');
+  pintarColumna('colCerrado', validados, 'cerrado', 'cerrado');
 }
 
 function renderTable(){
@@ -1204,6 +1255,7 @@ document.getElementById('btnConfirmValidar').addEventListener('click', async ()=
       fecha_validacion: fechaHoy()
     };
     await window.firebaseUpdateDoc(window.firebaseDocRef(window.firebaseDb, 'pendientes', String(pendienteAValidarId)), payload);
+    registrarLog(`Validó por inspección el pendiente ${pendienteAValidarId}`);
     document.getElementById('dlgValidarPass').close();
   }catch(e){
     console.error('Error al guardar la validación:', e);
@@ -1234,6 +1286,7 @@ document.getElementById('fileInput').addEventListener('change', (e)=>{
     for(const it of parsedItems){
       await saveItem(it);
     }
+    registrarLog(`Importó un CSV con ${parsedItems.length} pendiente(s)`);
     // la lectura en tiempo real (onSnapshot) actualiza la tabla sola una vez que Firestore confirma la escritura
   }});
 });
@@ -1276,6 +1329,7 @@ document.getElementById('btnSaveAdd').addEventListener('click', async ()=>{
     registrado_por: nombreCompletoUsuarioActual()
   });
   await saveItem(newItem);
+  registrarLog(`Agregó el pendiente ${newItem.id} (${newItem.tag || 's/d'})`);
   dlg.close();
 });
 
@@ -1313,7 +1367,7 @@ function openDetail(id){
   document.querySelectorAll('.chkDetAreaCierre').forEach(chk=>{ chk.disabled = soloLectura; });
 
   // Bloque de validación por inspección: lo puede tocar 'editor' o 'inspector', no 'viewer'
-  const puedeValidar = currentUserRole === 'editor' || currentUserRole === 'inspector';
+  const puedeValidar = currentUserRole === 'inspector'; // solo inspector valida; editor NO tiene esta función
   const validado = item.validado_inspeccion === 'true';
   document.getElementById('detValidadoInspeccion').checked = validado;
   document.getElementById('detValidadoInspeccion').disabled = !puedeValidar;
@@ -1351,6 +1405,7 @@ document.getElementById('btnSaveDetail').addEventListener('click', async ()=>{
     observaciones: document.getElementById('detObs').value
   };
   await saveItem(updatedItem);
+  registrarLog(`Editó el pendiente ${updatedItem.id} (${updatedItem.tag || 's/d'})`);
   dlgDetail.close();
 });
 
@@ -1373,6 +1428,7 @@ document.getElementById('btnGuardarValidacion').addEventListener('click', async 
 
   try{
     await window.firebaseUpdateDoc(window.firebaseDocRef(window.firebaseDb, 'pendientes', String(editingId)), payload);
+    registrarLog(`${payload.validado_inspeccion==='true' ? 'Validó' : 'Desvalidó'} por inspección el pendiente ${editingId}`);
     dlgDetail.close();
   }catch(e){
     console.error('Error al guardar la validación:', e);
@@ -1382,7 +1438,9 @@ document.getElementById('btnGuardarValidacion').addEventListener('click', async 
 
 document.getElementById('btnDeleteDetail').addEventListener('click', async ()=>{
   if(!confirm('¿Eliminar este pendiente? Esta acción no se puede deshacer.')) return;
+  const tagEliminado = (items.find(i=>String(i.id)===String(editingId))||{}).tag || 's/d';
   await deleteItemRemote(editingId);
+  registrarLog(`Eliminó el pendiente ${editingId} (${tagEliminado})`);
   dlgDetail.close();
 });
 
@@ -2000,15 +2058,73 @@ document.getElementById('btnEstatusResetScope').addEventListener('click', ()=>{
 // ================= FIN ESTATUS INDEX: DASHBOARD ====================
 
 // Estas dos funciones son llamadas por el módulo de Firebase (más abajo) cuando cambia el estado de sesión
+// ==================== HISTORIAL DE ACCIONES ====================
+let logEntries = [];
+let unsubscribeLog = null;
+
+async function registrarLog(descripcion){
+  try{
+    await window.firebaseAddDoc(window.firebaseCollection(window.firebaseDb, 'log_actividad'), {
+      fecha_iso: new Date().toISOString(),
+      fecha_legible: new Date().toLocaleString('es-AR'),
+      usuario: nombreCompletoUsuarioActual(),
+      email: currentUserProfile.email || '',
+      descripcion
+    });
+  }catch(e){
+    console.error('Error al registrar en el historial de acciones:', e);
+  }
+}
+
+function subscribeToLog(){
+  if(unsubscribeLog) return;
+  const q = window.firebaseQuery(
+    window.firebaseCollection(window.firebaseDb, 'log_actividad'),
+    window.firebaseOrderBy('fecha_iso', 'desc'),
+    window.firebaseLimit(150)
+  );
+  unsubscribeLog = window.firebaseOnSnapshot(q, (snapshot)=>{
+    logEntries = snapshot.docs.map(d=>d.data());
+    renderLog();
+  }, (err)=>console.error('Error al leer el historial de acciones:', err));
+}
+
+function unsubscribeLogIfNeeded(){
+  if(unsubscribeLog){ unsubscribeLog(); unsubscribeLog = null; }
+  logEntries = [];
+}
+
+function renderLog(){
+  const listEl = document.getElementById('logList');
+  const countEl = document.getElementById('logCount');
+  if(!listEl) return;
+  countEl.textContent = logEntries.length + (logEntries.length>=150 ? '+' : '');
+  if(logEntries.length === 0){
+    listEl.innerHTML = '<div class="log-empty">Todavía no hay acciones registradas.</div>';
+    return;
+  }
+  listEl.innerHTML = logEntries.map(l => `
+    <div class="log-entry">
+      <span class="log-fecha">${l.fecha_legible || ''}</span>
+      <span class="log-usuario">${l.usuario || 'Desconocido'}</span>
+      <span class="log-email"> · ${l.email || ''}</span>
+      <div class="log-desc">${l.descripcion || ''}</div>
+    </div>
+  `).join('');
+}
+// ================= FIN HISTORIAL DE ACCIONES ====================
+
 window.startApp = function(){
   subscribeToFirestore();
   subscribeToEstatusFirestore();
   subscribeToSubflags();
+  subscribeToLog();
 };
 window.stopApp = function(){
   unsubscribeFromFirestoreIfNeeded();
   unsubscribeEstatusIfNeeded();
   unsubscribeSubflagsIfNeeded();
+  unsubscribeLogIfNeeded();
 };
 </script>
 
@@ -2019,7 +2135,8 @@ window.stopApp = function(){
     EmailAuthProvider, reauthenticateWithCredential
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
   import {
-    getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot, getDoc, updateDoc
+    getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot, getDoc, updateDoc,
+    addDoc, query, orderBy, limit
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
   const firebaseConfig = {
@@ -2046,6 +2163,10 @@ window.stopApp = function(){
     return reauthenticateWithCredential(auth.currentUser, cred);
   };
   window.firebaseDeleteDoc = deleteDoc;
+  window.firebaseAddDoc = addDoc;
+  window.firebaseQuery = query;
+  window.firebaseOrderBy = orderBy;
+  window.firebaseLimit = limit;
   window.firebaseOnSnapshot = onSnapshot;
 
   const loginOverlay = document.getElementById('loginOverlay');
