@@ -150,6 +150,13 @@
   .card .desc{margin-top:3px; color:var(--text); line-height:1.35;}
   .card .breadcrumb{font-family:'JetBrains Mono',monospace; font-size:9.5px; color:var(--amber); text-transform:uppercase; letter-spacing:.04em; margin-bottom:3px;}
   .card .meta{margin-top:5px; font-size:10.5px; color:var(--muted); display:flex; justify-content:space-between; gap:8px;}
+  .card-meta-grid{
+    margin-top:7px; padding-top:7px; border-top:1px dashed var(--line);
+    display:grid; grid-template-columns:1fr 1fr; gap:4px 10px;
+    font-size:10.5px; color:var(--muted);
+  }
+  .card-meta-grid b{color:var(--text); font-weight:600;}
+  .card-meta-grid span{overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
   .crit-badge{font-family:'JetBrains Mono',monospace; font-weight:700; padding:1px 5px; border-radius:2px; font-size:10px;}
   .crit-A{background:rgba(216,87,74,.18); color:var(--red);}
   .crit-B{background:rgba(232,163,61,.18); color:var(--amber);}
@@ -567,6 +574,18 @@
   <div class="field"><label>FECHA REAL DE CIERRE</label><input type="date" id="detFReal"></div>
   <div class="field"><label>REFERENTE DE CIERRE</label><input id="detReferente"></div>
   <div class="field"><label>OBSERVACIONES</label><textarea id="detObs" rows="2"></textarea></div>
+
+  <div id="bloqueValidacion" style="border:1px solid var(--line); border-radius:4px; padding:12px; margin:14px 0; background:var(--panel-2);">
+    <label style="font-family:'JetBrains Mono',monospace; font-size:11.5px; color:var(--muted); display:block; margin-bottom:8px;">VALIDACIÓN DE CIERRE · DOBLE CONTROL</label>
+    <label style="display:flex; align-items:center; gap:8px; font-family:'Inter',sans-serif; font-size:13.5px; color:var(--text); cursor:pointer;">
+      <input type="checkbox" id="detValidadoInspeccion"> Validado por inspección
+    </label>
+    <div id="detValidacionInfo" style="font-size:11.5px; color:var(--muted); margin-top:6px; font-family:'JetBrains Mono',monospace;"></div>
+    <div class="dialog-actions" style="margin-top:10px;">
+      <button class="btn primary" id="btnGuardarValidacion">Guardar validación</button>
+    </div>
+  </div>
+
   <div class="dialog-actions">
     <button class="btn" id="btnDeleteDetail" style="border-color:var(--red); color:var(--red); margin-right:auto;">Eliminar</button>
     <button class="btn" id="btnCancelDetail">Cerrar</button>
@@ -662,7 +681,10 @@ const HEADER_MAP = {
   estado: ['estado'],
   observaciones: ['observaciones'],
   referente_cierre: ['referente_cierre','referente del cierre'],
-  registrado_por: ['registrado_por','registrado por']
+  registrado_por: ['registrado_por','registrado por'],
+  validado_inspeccion: ['validado_inspeccion','validado por inspeccion'],
+  validado_por: ['validado_por'],
+  fecha_validacion: ['fecha_validacion']
 };
 
 function normKey(s){
@@ -953,7 +975,12 @@ function renderKanban(){
         ${(i.fase || i.hito) ? `<div class="breadcrumb">${[i.fase,i.hito].filter(Boolean).join(' › ')}</div>` : ''}
         <div class="ss">${i.tag || 's/d'} <span class="crit-badge crit-${i.categoria}">${i.categoria}</span></div>
         <div class="desc">${i.descripcion || '(sin descripcion)'}</div>
-        <div class="meta"><span>${i.especialidad||''}</span><span>${i.responsable||''}</span></div>
+        <div class="card-meta-grid">
+          <span><b>Especialidad:</b> ${i.especialidad || '-'}</span>
+          <span><b>Asignada:</b> ${i.responsable || '-'}</span>
+          <span><b>Cierre:</b> ${i.area_cierre || '-'}</span>
+          <span><b>F. Real Cierre:</b> ${i.fecha_real_cierre || '-'}</span>
+        </div>
       `;
       container.appendChild(div);
     });
@@ -1172,6 +1199,16 @@ function openDetail(id){
   DETAIL_FIELD_IDS.forEach(id=>{ document.getElementById(id).disabled = soloLectura; });
   document.querySelectorAll('.chkDetAreaCierre').forEach(chk=>{ chk.disabled = soloLectura; });
 
+  // Bloque de validación por inspección: lo puede tocar 'editor' o 'inspector', no 'viewer'
+  const puedeValidar = currentUserRole === 'editor' || currentUserRole === 'inspector';
+  const validado = item.validado_inspeccion === 'true';
+  document.getElementById('detValidadoInspeccion').checked = validado;
+  document.getElementById('detValidadoInspeccion').disabled = !puedeValidar;
+  document.getElementById('detValidacionInfo').textContent = validado
+    ? `Validado por ${item.validado_por || '—'} el ${item.fecha_validacion || '—'}`
+    : 'Sin validar todavía';
+  document.getElementById('btnGuardarValidacion').style.display = puedeValidar ? '' : 'none';
+
   dlgDetail.showModal();
 }
 
@@ -1202,6 +1239,32 @@ document.getElementById('btnSaveDetail').addEventListener('click', async ()=>{
   };
   await saveItem(updatedItem);
   dlgDetail.close();
+});
+
+document.getElementById('btnGuardarValidacion').addEventListener('click', async ()=>{
+  const idx = items.findIndex(i => String(i.id) === String(editingId));
+  if(idx === -1) return;
+  const item = items[idx];
+  const marcado = document.getElementById('detValidadoInspeccion').checked;
+  const yaEstabaValidado = item.validado_inspeccion === 'true';
+
+  let payload;
+  if(marcado && !yaEstabaValidado){
+    // se acaba de validar ahora: se estampa quién y cuándo
+    payload = { validado_inspeccion: 'true', validado_por: nombreCompletoUsuarioActual(), fecha_validacion: fechaHoy() };
+  } else if(!marcado){
+    payload = { validado_inspeccion: 'false', validado_por: '', fecha_validacion: '' };
+  } else {
+    payload = { validado_inspeccion: 'true', validado_por: item.validado_por || '', fecha_validacion: item.fecha_validacion || '' };
+  }
+
+  try{
+    await window.firebaseUpdateDoc(window.firebaseDocRef(window.firebaseDb, 'pendientes', String(editingId)), payload);
+    dlgDetail.close();
+  }catch(e){
+    console.error('Error al guardar la validación:', e);
+    alert('No se pudo guardar la validación. Puede que falten permisos en las reglas de Firestore.');
+  }
 });
 
 document.getElementById('btnDeleteDetail').addEventListener('click', async ()=>{
@@ -1842,7 +1905,7 @@ window.stopApp = function(){
     getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
   import {
-    getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot, getDoc
+    getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot, getDoc, updateDoc
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
   const firebaseConfig = {
@@ -1863,6 +1926,7 @@ window.stopApp = function(){
   window.firebaseCollection = collection;
   window.firebaseDocRef = doc;
   window.firebaseSetDoc = setDoc;
+  window.firebaseUpdateDoc = updateDoc;
   window.firebaseDeleteDoc = deleteDoc;
   window.firebaseOnSnapshot = onSnapshot;
 
@@ -1882,6 +1946,7 @@ window.stopApp = function(){
         if (userDocSnap.exists()) {
           const data = userDocSnap.data();
           if (data.rol === 'editor') role = 'editor';
+          else if (data.rol === 'inspector') role = 'inspector';
           nombre = data.nombre || '';
           apellido = data.apellido || '';
         }
